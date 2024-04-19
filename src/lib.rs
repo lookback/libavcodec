@@ -15,6 +15,9 @@ pub struct Encoder {
     frame: RawFrame,
 }
 
+unsafe impl Send for Encoder {}
+unsafe impl Sync for Encoder {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncoderConfig {
     pub bitrate: u32,
@@ -67,6 +70,9 @@ pub struct Codec {
     pub long_name: &'static str,
     pub is_hw: bool,
 }
+
+unsafe impl Send for Codec {}
+unsafe impl Sync for Codec {}
 
 impl Codec {
     pub fn list() -> impl Iterator<Item = Codec> {
@@ -193,11 +199,12 @@ impl<'a> Iterator for EncoderIterator<'a> {
             }
 
             let data = std::slice::from_raw_parts((*pkt.0).data, (*pkt.0).size as usize);
+            let keyframe = (*pkt.0).flags & sys::AV_PKT_FLAG_KEY as i32 > 0;
 
             Some(Ok(Packet {
                 pkt: pkt.0,
                 data,
-                keyframe: (*pkt.0).flags & sys::AV_PKT_FLAG_KEY as i32 > 0,
+                keyframe,
             }))
         }
     }
