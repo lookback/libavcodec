@@ -194,7 +194,11 @@ impl<'a> Iterator for EncoderIterator<'a> {
 
             let data = std::slice::from_raw_parts((*pkt.0).data, (*pkt.0).size as usize);
 
-            Some(Ok(Packet { pkt: pkt.0, data }))
+            Some(Ok(Packet {
+                pkt: pkt.0,
+                data,
+                keyframe: (*pkt.0).flags & sys::AV_PKT_FLAG_KEY as i32 > 0,
+            }))
         }
     }
 }
@@ -273,6 +277,7 @@ impl Drop for RawPacket {
 pub struct Packet<'a> {
     pkt: *mut sys::AVPacket,
     pub data: &'a [u8],
+    pub keyframe: bool,
 }
 
 impl Drop for Packet<'_> {
