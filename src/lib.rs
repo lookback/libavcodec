@@ -25,6 +25,7 @@ pub struct EncoderConfig {
     pub profile: Option<EncoderProfile>,
     pub thread_count: u32,
     pub max_b_frames: u32,
+    pub keyframe_distance: u32,
     pub x264_realtime: bool,
 }
 
@@ -101,6 +102,7 @@ impl Encoder {
                 }
                 (*ctx).thread_count = config.thread_count as i32;
                 (*ctx).max_b_frames = config.max_b_frames as i32;
+                (*ctx).gop_size = config.keyframe_distance as i32;
             }
 
             if config.x264_realtime {
