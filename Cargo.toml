@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-thiserror = "1.0.58"
+thiserror = "^1"
 
 [build-dependencies]
-bindgen = "0.69.4"
-pkg-config = "0.3.30"
+bindgen = "*"
+pkg-config = "*"
