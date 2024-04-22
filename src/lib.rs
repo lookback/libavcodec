@@ -13,6 +13,7 @@ pub struct Encoder {
     codec: *const sys::AVCodec,
     ctx: *mut sys::AVCodecContext,
     frame: RawFrame,
+    pts_counter: i64,
 }
 
 unsafe impl Send for Encoder {}
@@ -142,7 +143,12 @@ impl Encoder {
 
             let frame = RawFrame(frame);
 
-            Ok(Encoder { codec, ctx, frame })
+            Ok(Encoder {
+                codec,
+                ctx,
+                frame,
+                pts_counter: 0,
+            })
         }
     }
 
@@ -162,7 +168,10 @@ impl Encoder {
         &mut self,
         frame: &dyn AvFrame,
     ) -> Result<impl Iterator<Item = Result<Packet, Error>>, Error> {
-        self.frame.fill(frame, self.width(), self.height());
+        let pts = self.pts_counter;
+        self.pts_counter += 1;
+
+        self.frame.fill(frame, self.width(), self.height(), pts);
 
         unsafe {
             let ret = sys::avcodec_send_frame(self.ctx, self.frame.0);
@@ -236,8 +245,11 @@ impl Drop for Encoder {
 struct RawFrame(*mut sys::AVFrame);
 
 impl RawFrame {
-    fn fill(&mut self, frame: &dyn AvFrame, width: usize, height: usize) {
+    fn fill(&mut self, frame: &dyn AvFrame, width: usize, height: usize, pts: i64) {
         unsafe {
+            (*self.0).pts = pts;
+            (*self.0).pkt_dts = pts;
+
             let planes = frame.plane_count();
 
             for i in 0..planes {
