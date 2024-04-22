@@ -42,6 +42,7 @@ fn main() {
         .allowlist_item("av_packet_unref")
         .allowlist_item("av_packet_alloc")
         .allowlist_item("av_packet_free")
+        .allowlist_item("av_strerror")
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,
         })

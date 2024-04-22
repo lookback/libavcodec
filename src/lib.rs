@@ -127,7 +127,7 @@ impl Encoder {
 
             let err = sys::avcodec_open2(ctx, codec, ptr::null_mut());
             if err < 0 {
-                return Err(Error::CodecOpenError(err));
+                return Err(Error::CodecOpenError(err, err_code_to_string(err)));
             }
 
             let frame = sys::av_frame_alloc();
@@ -137,7 +137,7 @@ impl Encoder {
 
             let err = sys::av_frame_get_buffer(frame, 32);
             if err < 0 {
-                return Err(Error::AllocateFrameFailed(err));
+                return Err(Error::AllocateFrameFailed(err, err_code_to_string(err)));
             }
 
             let frame = RawFrame(frame);
@@ -167,7 +167,7 @@ impl Encoder {
         unsafe {
             let ret = sys::avcodec_send_frame(self.ctx, self.frame.0);
             if ret < 0 {
-                return Err(Error::EncodeFrameFailed(ret));
+                return Err(Error::EncodeFrameFailed(ret, err_code_to_string(ret)));
             }
         }
 
@@ -176,6 +176,17 @@ impl Encoder {
             pkt: Some(RawPacket::new()),
         })
     }
+}
+
+fn err_code_to_string(code: i32) -> String {
+    let mut buf = [0_u8; sys::AV_ERROR_MAX_STRING_SIZE as usize];
+    let r = unsafe { sys::av_strerror(code, buf.as_mut_ptr().cast(), buf.len()) };
+    if r < 0 {
+        eprintln!("av_strerror failed: {}", r);
+        return String::new();
+    }
+    let c = CStr::from_bytes_until_nul(&buf).expect("a valid CStr");
+    c.to_string_lossy().to_string()
 }
 
 struct EncoderIterator<'a> {
@@ -195,7 +206,10 @@ impl<'a> Iterator for EncoderIterator<'a> {
                 self.pkt = None;
                 return None;
             } else if ret < 0 {
-                return Some(Err(Error::ReceivePacketFailed(ret)));
+                return Some(Err(Error::ReceivePacketFailed(
+                    ret,
+                    err_code_to_string(ret),
+                )));
             }
 
             let data = std::slice::from_raw_parts((*pkt.0).data, (*pkt.0).size as usize);
@@ -347,6 +361,29 @@ mod test {
 
     #[test]
     fn test_list_codecs() {
+        println!("{:#?}", err_code_to_string(-22));
+    }
+
+    #[test]
+    fn test_err_to_string() {
         println!("{:#?}", Codec::list().map(|c| c.name).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_instantiate_encoder() {
+        let codec = Codec::list().find(|c| c.name == "h264").unwrap();
+        let config = EncoderConfig {
+            bitrate: 2_000_000,
+            width: 1024,
+            height: 768,
+            fps: 30,
+            pix_fmt: PixelFormat::AV_PIX_FMT_YUV420P,
+            profile: None,
+            thread_count: 4,
+            max_b_frames: 0,
+            keyframe_distance: 300,
+            x264_realtime: true,
+        };
+        Encoder::new(&codec, &config).unwrap();
     }
 }
