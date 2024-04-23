@@ -12,7 +12,8 @@ fn main() {
     headers.push("libavcodec/avcodec.h");
     headers.push("libavutil/opt.h");
 
-    let library = pkg_config::probe_library("libavcodec").expect("find libavcodec");
+    let lib1 = pkg_config::probe_library("libavcodec").expect("find libavcodec");
+    let lib2 = pkg_config::probe_library("libavutil").expect("find libavutil");
 
     let mut meta_header: Vec<_> = headers
         .iter()
@@ -22,10 +23,16 @@ fn main() {
     meta_header.push("const int AVErrorEAgain = AVERROR(EAGAIN);\n".into());
     meta_header.push("const int AVErrorEof = AVERROR_EOF;\n".into());
 
-    let includes = library
+    let includes = lib1
         .include_paths
         .iter()
+        .chain(lib2.include_paths.iter())
         .map(|path| format!("-I{}", path.to_string_lossy()));
+
+    println!("cargo::rerun-if-changed=src/log-to-string.c");
+    cc::Build::new()
+        .file("src/log-to-string.c")
+        .compile("log_to_string");
 
     bindgen::Builder::default()
         .clang_args(includes)
@@ -38,15 +45,20 @@ fn main() {
         .allowlist_item("av_frame_alloc")
         .allowlist_item("av_frame_free")
         .allowlist_item("av_frame_get_buffer")
+        .allowlist_item("av_frame_make_writable")
         .allowlist_item("av_init_packet")
         .allowlist_item("av_packet_unref")
         .allowlist_item("av_packet_alloc")
         .allowlist_item("av_packet_free")
         .allowlist_item("av_strerror")
+        .allowlist_item("av_log_set_.*")
+        .allowlist_item("log_to_string.*")
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,
         })
         .derive_default(true)
+        .derive_debug(true)
+        .impl_debug(true)
         .generate_comments(false)
         .generate()
         .expect("configured bindgen")

@@ -1,4 +1,5 @@
 use std::ffi::c_char;
+use std::ffi::c_int;
 use std::ffi::c_void;
 use std::ffi::CStr;
 use std::ptr;
@@ -8,6 +9,8 @@ pub use sys::AVPixelFormat as PixelFormat;
 
 mod error;
 pub use error::Error;
+use tracing::Level;
+use tracing::{debug, error, info, trace, warn};
 
 pub struct Encoder {
     codec: *const sys::AVCodec,
@@ -84,6 +87,9 @@ impl Codec {
 impl Encoder {
     pub fn new(codec: &Codec, config: &EncoderConfig) -> Result<Self, Error> {
         unsafe {
+            set_log_level(Level::DEBUG);
+            sys::av_log_set_callback(Some(log_callback));
+
             let codec = codec.ptr;
 
             let ctx = sys::avcodec_alloc_context3(codec);
@@ -132,14 +138,17 @@ impl Encoder {
             }
 
             let frame = sys::av_frame_alloc();
-            (*frame).format = (*ctx).pix_fmt as i32;
-            (*frame).width = (*ctx).width;
-            (*frame).height = (*ctx).height;
+            (*frame).format = config.pix_fmt as i32;
+            (*frame).width = config.width as i32;
+            (*frame).height = config.width as i32;
+            (*frame).time_base = (*ctx).time_base;
 
-            let err = sys::av_frame_get_buffer(frame, 32);
+            let err = sys::av_frame_get_buffer(frame, 0);
             if err < 0 {
                 return Err(Error::AllocateFrameFailed(err, err_code_to_string(err)));
             }
+
+            sys::av_frame_make_writable(frame);
 
             let frame = RawFrame(frame);
 
@@ -171,7 +180,7 @@ impl Encoder {
         let pts = self.pts_counter;
         self.pts_counter += 1;
 
-        self.frame.fill(frame, self.width(), self.height(), pts);
+        self.frame.fill(frame, pts);
 
         unsafe {
             let ret = sys::avcodec_send_frame(self.ctx, self.frame.0);
@@ -245,10 +254,11 @@ impl Drop for Encoder {
 struct RawFrame(*mut sys::AVFrame);
 
 impl RawFrame {
-    fn fill(&mut self, frame: &dyn AvFrame, width: usize, height: usize, pts: i64) {
+    fn fill(&mut self, frame: &dyn AvFrame, pts: i64) {
         unsafe {
+            let width = (*self.0).width as usize;
+            let height = (*self.0).height as usize;
             (*self.0).pts = pts;
-            (*self.0).pkt_dts = pts;
 
             let planes = frame.plane_count();
 
@@ -365,6 +375,61 @@ impl Codec {
             }
         }
     }
+}
+
+fn set_log_level(level: Level) {
+    let l = match level {
+        Level::TRACE => sys::AV_LOG_TRACE,
+        Level::DEBUG => sys::AV_LOG_DEBUG,
+        Level::INFO => sys::AV_LOG_INFO,
+        Level::WARN => sys::AV_LOG_WARNING,
+        Level::ERROR => sys::AV_LOG_ERROR,
+    };
+    unsafe {
+        sys::av_log_set_level(l as i32);
+    }
+}
+
+unsafe extern "C" fn log_callback(
+    _ptr: *mut c_void,
+    level: c_int,
+    fmt: *const c_char,
+    vargs: sys::va_list,
+) {
+    let buffer = log_to_string(fmt, vargs);
+    if buffer.is_null() {
+        error!("Failed to convert log_callback to string");
+    }
+    let cs = CStr::from_ptr(buffer);
+    let s = cs.to_string_lossy();
+
+    // The c-side fmt has a \n we don't want.
+    let s = s.trim();
+
+    let level = level as u32;
+    if level <= sys::AV_LOG_ERROR {
+        error!("{}", s);
+    } else if level <= sys::AV_LOG_WARNING {
+        warn!("{}", s);
+    } else if level <= sys::AV_LOG_INFO {
+        info!("{}", s);
+    } else if level <= sys::AV_LOG_DEBUG {
+        debug!("{}", s);
+    } else if level <= sys::AV_LOG_TRACE {
+        trace!("{}", s);
+    }
+
+    log_to_string_free(buffer);
+}
+
+extern "C" {
+    pub fn log_to_string(
+        fmt: *const ::std::os::raw::c_char,
+        vargs: sys::va_list,
+    ) -> *mut ::std::os::raw::c_char;
+}
+extern "C" {
+    pub fn log_to_string_free(buffer: *mut ::std::os::raw::c_char);
 }
 
 #[cfg(test)]

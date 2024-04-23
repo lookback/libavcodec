@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 thiserror = "^1"
+tracing = "0.1.40"
 
 [build-dependencies]
 bindgen = "*"
+cc = "1.0.95"
 pkg-config = "*"
