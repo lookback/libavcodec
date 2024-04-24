@@ -5,6 +5,9 @@ pub enum Error {
     #[error("Codec not found: {0}")]
     CodecNotFound(String),
 
+    #[error("Codec is not an encoder: {0}")]
+    CodecIsNotEncoder(&'static str),
+
     #[error("Failed to avcodec_alloc_context3")]
     CreateContextFailed,
 

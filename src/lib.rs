@@ -72,15 +72,20 @@ pub struct Codec {
     ptr: *const sys::AVCodec,
     pub name: &'static str,
     pub long_name: &'static str,
-    pub is_hw: bool,
 }
 
 unsafe impl Send for Codec {}
 unsafe impl Sync for Codec {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodecKind {
+    Encoder,
+    Decoder,
+}
+
 impl Codec {
-    pub fn list() -> impl Iterator<Item = Codec> {
-        CodecIterator(Some(ptr::null_mut()))
+    pub fn list(kind: CodecKind) -> impl Iterator<Item = Codec> {
+        CodecIterator(Some(ptr::null_mut()), kind)
     }
 }
 
@@ -89,6 +94,10 @@ impl Encoder {
         unsafe {
             set_log_level(Level::DEBUG);
             sys::av_log_set_callback(Some(log_callback));
+
+            if codec.kind() != CodecKind::Encoder {
+                return Err(Error::CodecIsNotEncoder(codec.name));
+            }
 
             let codec = codec.ptr;
 
@@ -332,13 +341,15 @@ impl Drop for Packet<'_> {
     }
 }
 
-struct CodecIterator(Option<*mut c_void>);
+struct CodecIterator(Option<*mut c_void>, CodecKind);
 
 impl Iterator for CodecIterator {
     type Item = Codec;
 
     fn next(&mut self) -> Option<Self::Item> {
         let opaque = self.0.as_mut()?;
+
+        let want_encoder = self.1 == CodecKind::Encoder;
 
         unsafe {
             let codec = loop {
@@ -347,6 +358,12 @@ impl Iterator for CodecIterator {
                 if codec.is_null() {
                     self.0 = None;
                     return None;
+                }
+
+                let is_encoder = sys::av_codec_is_encoder(codec) != 0;
+
+                if want_encoder != is_encoder {
+                    continue;
                 }
 
                 if (*codec).type_ == sys::AVMediaType::AVMEDIA_TYPE_VIDEO {
@@ -371,7 +388,20 @@ impl Codec {
                 ptr: codec,
                 name: str_of((*codec).name),
                 long_name: str_of((*codec).long_name),
-                is_hw: ((*codec).capabilities & sys::AV_CODEC_CAP_HARDWARE as i32) > 0,
+            }
+        }
+    }
+
+    pub fn is_hw(&self) -> bool {
+        unsafe { ((*self.ptr).capabilities & sys::AV_CODEC_CAP_HARDWARE as i32) > 0 }
+    }
+
+    pub fn kind(&self) -> CodecKind {
+        unsafe {
+            if sys::av_codec_is_encoder(self.ptr) != 0 {
+                CodecKind::Encoder
+            } else {
+                CodecKind::Decoder
             }
         }
     }
@@ -438,17 +468,24 @@ mod test {
 
     #[test]
     fn test_list_codecs() {
-        println!("{:#?}", err_code_to_string(-22));
+        println!(
+            "{:#?}",
+            Codec::list(CodecKind::Encoder)
+                .map(|c| c.name)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
     fn test_err_to_string() {
-        println!("{:#?}", Codec::list().map(|c| c.name).collect::<Vec<_>>());
+        println!("{:#?}", err_code_to_string(-22));
     }
 
     #[test]
     fn test_instantiate_encoder() {
-        let codec = Codec::list().find(|c| c.name == "h264").unwrap();
+        let codec = Codec::list(CodecKind::Encoder)
+            .find(|c| c.name == "libx264")
+            .unwrap();
         let config = EncoderConfig {
             bitrate: 2_000_000,
             width: 1024,

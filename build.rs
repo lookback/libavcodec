@@ -42,6 +42,7 @@ fn main() {
         .allowlist_item("FF_.*")
         .allowlist_item("av_opt_set")
         .allowlist_item("av_codec_iterate")
+        .allowlist_item("av_codec_is_encoder")
         .allowlist_item("av_frame_alloc")
         .allowlist_item("av_frame_free")
         .allowlist_item("av_frame_get_buffer")
