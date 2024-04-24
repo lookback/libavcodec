@@ -29,7 +29,7 @@ fn main() {
         .chain(lib2.include_paths.iter())
         .map(|path| format!("-I{}", path.to_string_lossy()));
 
-    println!("cargo::rerun-if-changed=src/log-to-string.c");
+    println!("cargo:rerun-if-changed=src/log-to-string.c");
     cc::Build::new()
         .file("src/log-to-string.c")
         .compile("log_to_string");
