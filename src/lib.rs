@@ -5,7 +5,7 @@ use std::ffi::CStr;
 use std::ptr;
 
 mod sys;
-pub use sys::AVPixelFormat as PixelFormat;
+use sys::AVPixelFormat as PixelFormat;
 
 mod error;
 pub use error::Error;
@@ -28,7 +28,6 @@ pub struct EncoderConfig {
     pub width: u32,
     pub height: u32,
     pub fps: u8,
-    pub pix_fmt: PixelFormat,
     pub profile: Option<EncoderProfile>,
     pub thread_count: u32,
     pub max_b_frames: u32,
@@ -62,6 +61,8 @@ impl EncoderProfile {
 }
 
 pub trait AvFrame {
+    fn width(&self) -> usize;
+    fn height(&self) -> usize;
     fn plane_count(&self) -> usize;
     fn get_plane(&self, i: usize) -> &[u8];
     fn get_stride(&self, i: usize) -> usize;
@@ -99,12 +100,22 @@ impl Encoder {
                 return Err(Error::CodecIsNotEncoder(codec.name));
             }
 
+            let frame =
+                RawFrame::new(PixelFormat::AV_PIX_FMT_YUV420P, config.width, config.height)?;
+
             let codec = codec.ptr;
 
-            let ctx = sys::avcodec_alloc_context3(codec);
+            let ctx: *mut sys::AVCodecContext = sys::avcodec_alloc_context3(codec);
             if ctx.is_null() {
                 return Err(Error::CreateContextFailed);
             }
+
+            let enc = Encoder {
+                codec,
+                ctx,
+                frame,
+                pts_counter: 0,
+            };
 
             {
                 (*ctx).bit_rate = config.bitrate as i64;
@@ -118,7 +129,7 @@ impl Encoder {
                     num: config.fps as i32,
                     den: 1,
                 };
-                (*ctx).pix_fmt = config.pix_fmt;
+                (*ctx).pix_fmt = PixelFormat::AV_PIX_FMT_YUV420P;
                 if let Some(profile) = config.profile {
                     (*ctx).profile = profile.as_avcodec() as i32;
                 }
@@ -146,27 +157,7 @@ impl Encoder {
                 return Err(Error::CodecOpenError(err, err_code_to_string(err)));
             }
 
-            let frame = sys::av_frame_alloc();
-            (*frame).format = config.pix_fmt as i32;
-            (*frame).width = config.width as i32;
-            (*frame).height = config.width as i32;
-            (*frame).time_base = (*ctx).time_base;
-
-            let err = sys::av_frame_get_buffer(frame, 0);
-            if err < 0 {
-                return Err(Error::AllocateFrameFailed(err, err_code_to_string(err)));
-            }
-
-            sys::av_frame_make_writable(frame);
-
-            let frame = RawFrame(frame);
-
-            Ok(Encoder {
-                codec,
-                ctx,
-                frame,
-                pts_counter: 0,
-            })
+            Ok(enc)
         }
     }
 
@@ -209,7 +200,6 @@ fn err_code_to_string(code: i32) -> String {
     let mut buf = [0_u8; sys::AV_ERROR_MAX_STRING_SIZE as usize];
     let r = unsafe { sys::av_strerror(code, buf.as_mut_ptr().cast(), buf.len()) };
     if r < 0 {
-        eprintln!("av_strerror failed: {}", r);
         return String::new();
     }
     let c = CStr::from_bytes_until_nul(&buf).expect("a valid CStr");
@@ -263,33 +253,46 @@ impl Drop for Encoder {
 struct RawFrame(*mut sys::AVFrame);
 
 impl RawFrame {
+    fn new(pix_fmt: PixelFormat, width: u32, height: u32) -> Result<Self, Error> {
+        unsafe {
+            let frame = sys::av_frame_alloc();
+            (*frame).format = pix_fmt as i32;
+            (*frame).width = width as i32;
+            (*frame).height = height as i32;
+
+            // let err = sys::av_frame_get_buffer(frame, 0);
+            // if err < 0 {
+            //     return Err(Error::AllocateFrameFailed(err, err_code_to_string(err)));
+            // }
+
+            // sys::av_frame_make_writable(frame);
+
+            Ok(Self(frame))
+        }
+    }
+
     fn fill(&mut self, frame: &dyn AvFrame, pts: i64) {
         unsafe {
             let width = (*self.0).width as usize;
             let height = (*self.0).height as usize;
+
+            assert_eq!(width, frame.width());
+            assert_eq!(height, frame.height());
+
             (*self.0).pts = pts;
 
-            let planes = frame.plane_count();
+            let plane_count = frame.plane_count();
 
-            for i in 0..planes {
-                let src_base = frame.get_plane(i);
-                let src_stride = frame.get_stride(i);
+            let mut planes = [ptr::null_mut(); 8];
+            let mut strides = [0; 8];
 
-                let dst_plane = (*self.0).data[i];
-                let dst_stride = (*self.0).linesize[i];
-
-                for y in 0..height {
-                    let src_offs = y * src_stride;
-                    let src_range = src_offs..(src_offs + width);
-                    let src = &src_base[src_range];
-
-                    let dst_offs = y * dst_stride as usize;
-                    let dst_ptr = dst_plane.add(dst_offs);
-                    let dst = std::slice::from_raw_parts_mut(dst_ptr, width);
-
-                    dst.copy_from_slice(src);
-                }
+            for i in 0..plane_count {
+                planes[i] = frame.get_plane(i).as_ptr().cast_mut();
+                strides[i] = frame.get_stride(i) as i32;
             }
+
+            (*self.0).data = planes;
+            (*self.0).linesize = strides;
         }
     }
 }
@@ -491,7 +494,6 @@ mod test {
             width: 1024,
             height: 768,
             fps: 30,
-            pix_fmt: PixelFormat::AV_PIX_FMT_YUV420P,
             profile: None,
             thread_count: 4,
             max_b_frames: 0,
