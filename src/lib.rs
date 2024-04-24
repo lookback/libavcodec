@@ -94,7 +94,7 @@ impl Encoder {
     pub fn new(codec: &Codec, config: &EncoderConfig) -> Result<Self, Error> {
         unsafe {
             set_log_level(Level::DEBUG);
-            sys::av_log_set_callback(Some(log_callback));
+            av_log_set_callback(Some(log_callback));
 
             if codec.kind() != CodecKind::Encoder {
                 return Err(Error::CodecIsNotEncoder(codec.name));
@@ -427,7 +427,7 @@ unsafe extern "C" fn log_callback(
     _ptr: *mut c_void,
     level: c_int,
     fmt: *const c_char,
-    vargs: sys::va_list,
+    vargs: *const c_void,
 ) {
     let buffer = log_to_string(fmt, vargs);
     if buffer.is_null() {
@@ -455,14 +455,28 @@ unsafe extern "C" fn log_callback(
     log_to_string_free(buffer);
 }
 
+// This is here because macOS bindgen makes a different type to Linux. Ultimately
+// arg4 is "just a pointer".
+// expected fn pointer `unsafe extern "C" fn(_, _, _, *mut __va_list_tag)`
+// found       fn item `unsafe extern "C" fn(_, _, _, [__va_list_tag; 1]) {log_callback}`
 extern "C" {
-    pub fn log_to_string(
-        fmt: *const ::std::os::raw::c_char,
-        vargs: sys::va_list,
-    ) -> *mut ::std::os::raw::c_char;
+    pub fn av_log_set_callback(
+        callback: ::std::option::Option<
+            unsafe extern "C" fn(
+                arg1: *mut c_void,
+                arg2: c_int,
+                arg3: *const c_char,
+                arg4: *const c_void,
+            ),
+        >,
+    );
+}
+
+extern "C" {
+    pub fn log_to_string(fmt: *const c_char, vargs: *const c_void) -> *mut c_char;
 }
 extern "C" {
-    pub fn log_to_string_free(buffer: *mut ::std::os::raw::c_char);
+    pub fn log_to_string_free(buffer: *mut c_char);
 }
 
 #[cfg(test)]

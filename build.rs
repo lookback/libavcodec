@@ -46,7 +46,7 @@ fn main() {
         .allowlist_item("av_init_packet")
         .allowlist_item("av_packet_.*")
         .allowlist_item("av_strerror")
-        .allowlist_item("av_log_set_.*")
+        .allowlist_item("av_log_set_level")
         .allowlist_item("log_to_string.*")
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,
