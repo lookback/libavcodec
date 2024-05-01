@@ -15,7 +15,7 @@ pub use error::Error;
 use tracing::Level;
 use tracing::{debug, error, info, trace, warn};
 
-pub trait AvFrame {
+pub trait FrameRef {
     fn width(&self) -> usize;
     fn height(&self) -> usize;
     fn plane_count(&self) -> usize;
@@ -78,7 +78,7 @@ impl RawFrame {
         }
     }
 
-    fn fill(&mut self, frame: &dyn AvFrame, pts: i64) {
+    fn fill(&mut self, frame: &dyn FrameRef, pts: i64) {
         unsafe {
             let width = (*self.0).width as usize;
             let height = (*self.0).height as usize;
