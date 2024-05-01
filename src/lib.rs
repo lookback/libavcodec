@@ -25,6 +25,8 @@ pub trait AvFrame {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Codec {
+    /// SAFETY: These values are allocated and initialised at link time and then valid until
+    /// process exit.
     ptr: *const sys::AVCodec,
     pub name: &'static str,
     pub long_name: &'static str,
@@ -185,18 +187,20 @@ impl Iterator for CodecIterator {
 }
 
 impl Codec {
-    fn from_ptr(codec: *const sys::AVCodec) -> Self {
-        unsafe {
-            unsafe fn str_of(ptr: *const c_char) -> &'static str {
-                let name = CStr::from_ptr(ptr);
-                name.to_str().expect("a utf-8 string")
-            }
+    /// Create a [`Codec`] from a pointer.
+    ///
+    /// **SAFETY:** The caller must guarantee that the pointer is valid until the process ends.
+    /// This is the case for pointers returned by functions like `av_codec_iterate`.
+    unsafe fn from_ptr(codec: *const sys::AVCodec) -> Self {
+        unsafe fn str_of(ptr: *const c_char) -> &'static str {
+            let name = CStr::from_ptr(ptr);
+            name.to_str().expect("a utf-8 string")
+        }
 
-            Codec {
-                ptr: codec,
-                name: str_of((*codec).name),
-                long_name: str_of((*codec).long_name),
-            }
+        Codec {
+            ptr: codec,
+            name: str_of((*codec).name),
+            long_name: str_of((*codec).long_name),
         }
     }
 

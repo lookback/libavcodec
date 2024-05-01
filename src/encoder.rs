@@ -136,7 +136,7 @@ impl Encoder {
     }
 
     pub fn codec(&self) -> Codec {
-        Codec::from_ptr(self.codec)
+        unsafe { Codec::from_ptr(self.codec) }
     }
 
     pub fn encode(
