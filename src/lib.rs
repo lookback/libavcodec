@@ -8,7 +8,7 @@ mod sys;
 use sys::AVPixelFormat as PixelFormat;
 
 mod encoder;
-pub use encoder::{Encoder, EncoderConfig, EncoderProfile};
+pub use encoder::{Encoder, EncoderConfig, EncoderProfile, PacketProducer};
 mod error;
 pub use error::Error;
 
