@@ -11,6 +11,9 @@ fn main() {
 
     headers.push("libavcodec/avcodec.h");
     headers.push("libavutil/opt.h");
+    headers.push("libavutil/mem.h");
+    headers.push("libavutil/imgutils.h");
+    headers.push("libavutil/pixdesc.h");
 
     let lib1 = pkg_config::probe_library("libavcodec").expect("find libavcodec");
     let lib2 = pkg_config::probe_library("libavutil").expect("find libavutil");
@@ -45,8 +48,12 @@ fn main() {
         .allowlist_item("av_frame_.*")
         .allowlist_item("av_init_packet")
         .allowlist_item("av_packet_.*")
+        .allowlist_item("av_buffer_.*")
         .allowlist_item("av_strerror")
         .allowlist_item("av_log_set_level")
+        .allowlist_item("av_malloc")
+        .allowlist_item("av_image_.*")
+        .allowlist_item("av_pix_.*")
         .allowlist_item("log_to_string.*")
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,
