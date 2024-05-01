@@ -9,6 +9,8 @@ use sys::AVPixelFormat as PixelFormat;
 
 mod encoder;
 pub use encoder::{Encoder, EncoderConfig, EncoderProfile, PacketProducer};
+mod decoder;
+pub use decoder::{DecodedFrame, Decoder, DecoderPacket, PacketData};
 mod error;
 pub use error::Error;
 
