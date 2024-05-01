@@ -3,9 +3,9 @@ use std::ptr;
 
 use tracing::Level;
 
-
-use super::{sys, av_log_set_callback, set_log_level, log_callback, Codec, Error, CodecKind, err_code_to_string, FrameRef, Packet};
 use super::sys::AVPixelFormat as PixelFormat;
+use super::{av_log_set_callback, err_code_to_string, log_callback, set_log_level};
+use super::{sys, Codec, CodecKind, Error, FrameRef, Packet};
 use super::{RawFrame, RawPacket};
 
 pub struct Encoder {
@@ -139,10 +139,7 @@ impl Encoder {
         unsafe { Codec::from_ptr(self.codec) }
     }
 
-    pub fn encode(
-        &mut self,
-        frame: &dyn FrameRef,
-    ) -> Result<impl Iterator<Item = Result<Packet, Error>>, Error> {
+    pub fn encode(&mut self, frame: &dyn FrameRef) -> Result<PacketProducer, Error> {
         let pts = self.pts_counter;
         self.pts_counter += 1;
 
@@ -155,22 +152,20 @@ impl Encoder {
             }
         }
 
-        Ok(EncoderIterator {
+        Ok(PacketProducer {
             enc: self,
             pkt: Some(RawPacket::new()),
         })
     }
 }
 
-struct EncoderIterator<'a> {
+pub struct PacketProducer<'a> {
     enc: &'a mut Encoder,
     pkt: Option<RawPacket>,
 }
 
-impl<'a> Iterator for EncoderIterator<'a> {
-    type Item = Result<Packet<'a>, Error>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'a> PacketProducer<'a> {
+    pub fn next<'b>(&'b mut self) -> Option<Result<Packet<'b>, Error>> {
         let pkt = self.pkt.as_mut()?;
 
         unsafe {
