@@ -4,7 +4,7 @@ use std::ptr;
 use tracing::Level;
 
 
-use super::{sys, av_log_set_callback, set_log_level, log_callback, Codec, Error, CodecKind, err_code_to_string, EncodedFrame, Packet};
+use super::{sys, av_log_set_callback, set_log_level, log_callback, Codec, Error, CodecKind, err_code_to_string, FrameRef, Packet};
 use super::sys::AVPixelFormat as PixelFormat;
 use super::{RawFrame, RawPacket};
 
@@ -141,7 +141,7 @@ impl Encoder {
 
     pub fn encode(
         &mut self,
-        frame: &dyn EncodedFrame,
+        frame: &dyn FrameRef,
     ) -> Result<impl Iterator<Item = Result<Packet, Error>>, Error> {
         let pts = self.pts_counter;
         self.pts_counter += 1;
