@@ -262,8 +262,8 @@ impl FrameRef for DecodedFrame {
                 PixelFormat::AV_PIX_FMT_YUV420P as i32,
                 "Only YUV420P is supported"
             );
-            let fmt = sys::av_pix_fmt_desc_get(PixelFormat::AV_PIX_FMT_YUV420P);
-            (*fmt).nb_components.into()
+
+            3
         }
     }
 
@@ -279,11 +279,15 @@ impl FrameRef for DecodedFrame {
             );
             let ptr: *mut u8 = (*self.0).data[i];
 
-            let len = sys::av_image_get_linesize(
-                PixelFormat::AV_PIX_FMT_YUV420P,
-                self.width() as i32,
-                i as i32,
-            ) * self.height() as i32;
+            let height = self.height();
+            let stride = self.get_stride(i);
+            let len = if i == 0 {
+                // Y
+                stride * height
+            } else {
+                // U & V
+                stride * (height / 2)
+            };
 
             std::slice::from_raw_parts(ptr, len as usize)
         }
@@ -299,11 +303,10 @@ impl FrameRef for DecodedFrame {
                 PixelFormat::AV_PIX_FMT_YUV420P as i32,
                 "Only YUV420P is supported"
             );
-            sys::av_image_get_linesize(
-                PixelFormat::AV_PIX_FMT_YUV420P,
-                self.width() as i32,
-                i as i32,
-            ) as usize
+
+            (*self.0).linesize[i]
+                .try_into()
+                .expect("Non negative linesize")
         }
     }
 }
