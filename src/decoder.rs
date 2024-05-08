@@ -338,6 +338,15 @@ impl Drop for DecodedFrame {
     }
 }
 
+impl Drop for Decoder {
+    fn drop(&mut self) {
+        unsafe {
+            sys::avcodec_free_context(&mut self.ctx);
+        }
+        self.ctx = ptr::null_mut();
+    }
+}
+
 impl Default for PtsMap {
     fn default() -> Self {
         Self {
