@@ -3,14 +3,17 @@ use std::ptr;
 
 use tracing::Level;
 
+use crate::buffer::Buffer;
+use crate::DecoderPacket;
+use crate::PacketData;
+
 use super::sys::AVPixelFormat as PixelFormat;
 use super::{av_log_set_callback, err_code_to_string, log_callback, set_log_level};
-use super::{sys, Codec, CodecKind, Error, FrameRef, Packet};
+use super::{sys, Codec, CodecKind, Error, Frame};
 
 pub struct Encoder {
     codec: *const sys::AVCodec,
     ctx: *mut sys::AVCodecContext,
-    frame: RawFrame,
     pts_counter: i64,
 }
 
@@ -65,9 +68,6 @@ impl Encoder {
                 return Err(Error::CodecIsNotEncoder(codec.name));
             }
 
-            let frame =
-                RawFrame::new(PixelFormat::AV_PIX_FMT_YUV420P, config.width, config.height)?;
-
             let codec = codec.ptr;
 
             let ctx: *mut sys::AVCodecContext = sys::avcodec_alloc_context3(codec);
@@ -78,7 +78,6 @@ impl Encoder {
             let enc = Encoder {
                 codec,
                 ctx,
-                frame,
                 pts_counter: 0,
             };
 
@@ -138,56 +137,54 @@ impl Encoder {
         unsafe { Codec::from_ptr(self.codec) }
     }
 
-    pub fn encode(&mut self, frame: &dyn FrameRef) -> Result<PacketProducer, Error> {
+    pub fn encode(
+        &mut self,
+        frame: impl Frame,
+    ) -> Result<impl Iterator<Item = Result<EncodedPacket, Error>> + '_, Error> {
         let pts = self.pts_counter;
         self.pts_counter += 1;
 
-        self.frame.fill(frame, pts);
+        let mut fr = unsafe { sys::av_frame_alloc() };
 
-        unsafe {
-            let ret = sys::avcodec_send_frame(self.ctx, self.frame.0);
-            if ret < 0 {
-                return Err(Error::EncodeFrameFailed(ret, err_code_to_string(ret)));
-            }
+        const MAX_PLANES: usize = sys::AV_NUM_DATA_POINTERS as usize;
+
+        let mut planes = [ptr::null_mut(); MAX_PLANES];
+        let mut strides = [0; MAX_PLANES];
+
+        let plane_count = frame.plane_count();
+        for i in 0..plane_count {
+            planes[i] = frame.get_plane(i).as_ptr().cast_mut();
+            strides[i] = frame.get_stride(i) as i32;
         }
 
-        Ok(PacketProducer {
-            enc: self,
-            pkt: Some(RawPacket::new()),
-        })
-    }
-}
+        let width = frame.width() as i32;
+        let height = frame.height() as i32;
 
-pub struct PacketProducer<'a> {
-    enc: &'a mut Encoder,
-    pkt: Option<RawPacket>,
-}
-
-impl<'a> PacketProducer<'a> {
-    pub fn next<'b>(&'b mut self) -> Option<Result<Packet<'b>, Error>> {
-        let pkt = self.pkt.as_mut()?;
+        let buf = Buffer::new(frame.into_bufferable());
+        let mut buffers = [ptr::null_mut(); MAX_PLANES];
+        buffers[0] = buf.into();
 
         unsafe {
-            let ret = sys::avcodec_receive_packet(self.enc.ctx, pkt.0);
-            if ret == sys::AVErrorEAgain || ret == sys::AVErrorEof {
-                self.pkt = None;
-                return None;
-            } else if ret < 0 {
-                return Some(Err(Error::ReceivePacketFailed(
-                    ret,
-                    err_code_to_string(ret),
-                )));
-            }
-
-            let data = std::slice::from_raw_parts((*pkt.0).data, (*pkt.0).size as usize);
-            let keyframe = (*pkt.0).flags & sys::AV_PKT_FLAG_KEY as i32 > 0;
-
-            Some(Ok(Packet {
-                pkt: pkt.0,
-                data,
-                keyframe,
-            }))
+            (*fr).format = PixelFormat::AV_PIX_FMT_YUV420P as i32;
+            (*fr).width = width;
+            (*fr).height = height;
+            (*fr).pts = pts;
+            (*fr).data = planes;
+            (*fr).linesize = strides;
+            (*fr).buf = buffers;
         }
+
+        let ret = unsafe { sys::avcodec_send_frame(self.ctx, fr) };
+
+        unsafe {
+            sys::av_frame_free(&mut fr);
+        }
+
+        if ret < 0 {
+            return Err(Error::EncodeFrameFailed(ret, err_code_to_string(ret)));
+        }
+
+        Ok(PacketIterator { enc: Some(self) })
     }
 }
 
@@ -200,81 +197,64 @@ impl Drop for Encoder {
     }
 }
 
-struct RawFrame(*mut sys::AVFrame);
-
-impl RawFrame {
-    fn new(pix_fmt: PixelFormat, width: u32, height: u32) -> Result<Self, Error> {
-        unsafe {
-            let frame = sys::av_frame_alloc();
-            (*frame).format = pix_fmt as i32;
-            (*frame).width = width as i32;
-            (*frame).height = height as i32;
-
-            // let err = sys::av_frame_get_buffer(frame, 0);
-            // if err < 0 {
-            //     return Err(Error::AllocateFrameFailed(err, err_code_to_string(err)));
-            // }
-
-            // sys::av_frame_make_writable(frame);
-
-            Ok(Self(frame))
-        }
-    }
-
-    fn fill(&mut self, frame: &dyn FrameRef, pts: i64) {
-        unsafe {
-            let width = (*self.0).width as usize;
-            let height = (*self.0).height as usize;
-
-            assert_eq!(width, frame.width());
-            assert_eq!(height, frame.height());
-
-            (*self.0).pts = pts;
-
-            let plane_count = frame.plane_count();
-
-            let mut planes = [ptr::null_mut(); 8];
-            let mut strides = [0; 8];
-
-            for i in 0..plane_count {
-                planes[i] = frame.get_plane(i).as_ptr().cast_mut();
-                strides[i] = frame.get_stride(i) as i32;
-            }
-
-            (*self.0).data = planes;
-            (*self.0).linesize = strides;
-        }
-    }
+pub struct PacketIterator<'a> {
+    enc: Option<&'a mut Encoder>,
 }
 
-impl Drop for RawFrame {
-    fn drop(&mut self) {
-        unsafe {
-            sys::av_frame_free(&mut self.0);
-            self.0 = ptr::null_mut();
-        }
-    }
-}
+impl<'a> Iterator for PacketIterator<'a> {
+    type Item = Result<EncodedPacket, Error>;
 
-struct RawPacket(*mut sys::AVPacket);
+    fn next(&mut self) -> Option<Self::Item> {
+        let enc = self.enc.as_ref()?;
 
-impl RawPacket {
-    pub fn new() -> Self {
         unsafe {
             let pkt = sys::av_packet_alloc();
-            (*pkt).data = ptr::null_mut();
-            (*pkt).size = 0;
-            sys::av_init_packet(pkt);
-            Self(pkt)
+
+            let ret = sys::avcodec_receive_packet(enc.ctx, pkt);
+            if ret == sys::AVErrorEAgain || ret == sys::AVErrorEof {
+                // Remove enc to stop producing packets.
+                self.enc = None;
+                return None;
+            } else if ret < 0 {
+                return Some(Err(Error::ReceivePacketFailed(
+                    ret,
+                    err_code_to_string(ret),
+                )));
+            }
+
+            Some(Ok(EncodedPacket { pkt }))
         }
     }
 }
 
-impl Drop for RawPacket {
+pub struct EncodedPacket {
+    pkt: *mut sys::AVPacket,
+}
+
+impl DecoderPacket for EncodedPacket {
+    fn data(&mut self) -> PacketData {
+        todo!()
+    }
+
+    fn rotation(&self) -> usize {
+        todo!()
+    }
+}
+
+impl EncodedPacket {
+    pub fn data(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts((*self.pkt).data, (*self.pkt).size as usize) }
+    }
+
+    pub fn keyframe(&self) -> bool {
+        unsafe { (*self.pkt).flags & sys::AV_PKT_FLAG_KEY as i32 > 0 }
+    }
+}
+
+impl Drop for EncodedPacket {
     fn drop(&mut self) {
         unsafe {
-            sys::av_packet_free(&mut self.0);
-            self.0 = ptr::null_mut();
+            sys::av_packet_unref(self.pkt);
         }
     }
 }
