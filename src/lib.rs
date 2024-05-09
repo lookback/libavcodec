@@ -5,10 +5,11 @@ use std::ffi::CStr;
 use std::ptr;
 
 mod sys;
+use buffer::Bufferable;
 use sys::AVPixelFormat as PixelFormat;
 
 mod encoder;
-pub use encoder::{Encoder, EncoderConfig, EncoderProfile, PacketProducer};
+pub use encoder::{Encoder, EncoderConfig, EncoderProfile, PacketIterator};
 mod decoder;
 pub use decoder::{DecodedFrame, Decoder, DecoderPacket, PacketData};
 mod error;
@@ -18,12 +19,16 @@ mod buffer;
 use tracing::Level;
 use tracing::{debug, error, info, trace, warn};
 
-pub trait FrameRef {
+pub trait Frame {
+    type AsBufferable: Bufferable + Send + 'static;
+
     fn width(&self) -> usize;
     fn height(&self) -> usize;
     fn plane_count(&self) -> usize;
     fn get_plane(&self, i: usize) -> &[u8];
     fn get_stride(&self, i: usize) -> usize;
+
+    fn into_bufferable(self) -> Self::AsBufferable;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
