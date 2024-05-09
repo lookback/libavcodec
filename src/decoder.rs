@@ -1,6 +1,8 @@
 use std::ffi::c_void;
 use std::ptr;
 
+use crate::buffer::Buffer;
+
 use super::{
     av_log_set_callback, err_code_to_string, log_callback, set_log_level, sys, Codec, CodecKind,
     Error, FrameRef, PixelFormat,
@@ -75,42 +77,34 @@ impl Decoder {
         &mut self,
         packet: &mut dyn DecoderPacket,
     ) -> Result<impl Iterator<Item = Result<DecodedFrame, Error>> + '_, Error> {
-        let mut pkt = unsafe {
-            let pkt = sys::av_packet_alloc();
-            if pkt.is_null() {
-                return Err(Error::AlllocateFailed("av_malloc for Decoder::decode"));
-            }
+        let mut pkt = unsafe { sys::av_packet_alloc() };
 
-            let data = packet.data();
-            // The buffer used for the packet is required to have
-            // `sys::AV_INPUT_BUFFER_PADDING_SIZE` padding bytes, this is guaranteed for us by
-            // `PacketData`.
-            let len = data.inner.len();
-            // This is a fat pointer i.e. 2 words
-            let data_ptr = Box::into_raw(data.inner);
-            let buf = sys::av_buffer_create(
-                data_ptr.cast(),
-                // This might look useless, but depending on the version of libavcodec used it's
-                // required.
-                #[allow(clippy::useless_conversion)]
-                len.try_into().unwrap(),
-                Some(free_boxed_slice),
-                // We store the length of the slice as the opaque data so we can re-create the fat
-                // pointer for freeing in `free_boxed_slice`.
-                len as *mut c_void,
-                0,
-            );
-            assert!(!buf.is_null());
-            (*pkt).buf = buf;
+        if pkt.is_null() {
+            return Err(Error::AlllocateFailed("av_malloc for Decoder::decode"));
+        }
+
+        let mut data = packet.data();
+
+        // The buffer used for the packet is required to have
+        // `sys::AV_INPUT_BUFFER_PADDING_SIZE` padding bytes, this is guaranteed for us by
+        // `PacketData`.
+        let len = data.inner.len();
+
+        let data_ptr: *mut u8 = data.inner.as_mut_ptr();
+
+        let buf = Buffer::new(data.inner);
+
+        unsafe {
+            (*pkt).buf = buf.into();
             (*pkt).data = data_ptr.cast();
             (*pkt).pts = packet.pts();
             // This should be the size of the data without the padding
             (*pkt).size = (len as i32) - sys::AV_INPUT_BUFFER_PADDING_SIZE as i32;
+        }
 
-            pkt
-        };
         self.pts_map.set(packet.pts(), packet.rotation());
         let ret = unsafe { sys::avcodec_send_packet(self.ctx, pkt) };
+
         // Regardless of errors we are done with this packet, parts of the packet might have been
         // retained in the decoder.
         //
@@ -354,13 +348,4 @@ impl Default for PtsMap {
             cur: 0,
         }
     }
-}
-
-extern "C" fn free_boxed_slice(opaque: *mut c_void, data: *mut u8) {
-    let len = opaque as usize;
-    let ptr = std::ptr::slice_from_raw_parts_mut(data, len);
-
-    // SAFETY: The pointer was originally created from a Box<[u8]> and the length was that from
-    // said boxed slice.
-    let _ = unsafe { Box::from_raw(ptr) };
 }
