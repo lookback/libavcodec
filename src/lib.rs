@@ -65,21 +65,6 @@ fn err_code_to_string(code: i32) -> String {
     c.to_string_lossy().to_string()
 }
 
-pub struct Packet<'a> {
-    pkt: *mut sys::AVPacket,
-    pub data: &'a [u8],
-    pub keyframe: bool,
-}
-
-impl Drop for Packet<'_> {
-    fn drop(&mut self) {
-        unsafe {
-            // Clean the packet for reusing.
-            sys::av_packet_unref(self.pkt);
-        }
-    }
-}
-
 struct CodecIterator(Option<*mut c_void>, CodecKind);
 
 impl Iterator for CodecIterator {
