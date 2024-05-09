@@ -28,36 +28,56 @@ pub trait Frame {
     fn get_plane(&self, i: usize) -> &[u8];
     fn get_stride(&self, i: usize) -> usize;
 
+    fn rotation(&self) -> usize;
+
     fn into_bufferable(self) -> Self::AsBufferable;
 }
 
-pub trait Packet {
-    /// Returns
-    fn data(&mut self) -> PacketData;
+pub trait Packet<Data>
+where
+    Data: ?Sized,
+{
+    type AsBufferable: Bufferable + Send + 'static;
+
+    fn data(&self) -> &Data;
     fn rotation(&self) -> usize;
+    fn keyframe(&self) -> bool;
+
+    fn into_bufferable(self) -> Self::AsBufferable;
 }
 
-pub struct PacketData {
-    inner: Box<[u8]>,
+pub trait PaddedData {
+    fn len(&self) -> usize;
+    fn as_ptr(&self) -> *const u8;
 }
 
-impl PacketData {
-    pub fn new(mut data: Vec<u8>) -> Self {
-        data.extend_from_slice(&[0; sys::AV_INPUT_BUFFER_PADDING_SIZE as usize]);
+pub struct PaddedDataImpl(Vec<u8>);
 
-        Self {
-            inner: data.into_boxed_slice(),
-        }
+impl From<Vec<u8>> for PaddedDataImpl {
+    fn from(mut value: Vec<u8>) -> Self {
+        let new_len = value.len() + sys::AV_INPUT_BUFFER_PADDING_SIZE as usize;
+        value.resize(new_len, 0);
+        PaddedDataImpl(value)
     }
 }
 
-impl From<&[u8]> for PacketData {
+impl From<&[u8]> for PaddedDataImpl {
     fn from(value: &[u8]) -> Self {
-        let new_size = value.len() + sys::AV_INPUT_BUFFER_PADDING_SIZE as usize;
-        let mut vec = Vec::with_capacity(new_size);
+        let new_len = value.len() + sys::AV_INPUT_BUFFER_PADDING_SIZE as usize;
+        let mut vec = Vec::with_capacity(new_len);
         vec.extend_from_slice(value);
+        vec.resize(new_len, 0);
+        PaddedDataImpl(vec)
+    }
+}
 
-        Self::new(vec)
+impl PaddedData for PaddedDataImpl {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn as_ptr(&self) -> *const u8 {
+        self.0.as_ptr()
     }
 }
 

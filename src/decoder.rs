@@ -4,6 +4,7 @@ use std::ptr;
 use crate::buffer::Buffer;
 use crate::buffer::BufferableAvFrame;
 use crate::Packet;
+use crate::PaddedData;
 
 use super::{
     av_log_set_callback, err_code_to_string, log_callback, set_log_level, sys, Codec, CodecKind,
@@ -67,9 +68,9 @@ impl Decoder {
     /// Decode some compressed data.
     ///
     /// Returns an iterator over the resulting frames.
-    pub fn decode(
+    pub fn decode<Data: PaddedData>(
         &mut self,
-        packet: &mut dyn Packet,
+        packet: impl Packet<Data>,
     ) -> Result<impl Iterator<Item = Result<DecodedFrame, Error>> + '_, Error> {
         let mut pkt = unsafe { sys::av_packet_alloc() };
 
@@ -77,29 +78,29 @@ impl Decoder {
             return Err(Error::AlllocateFailed("av_malloc for Decoder::decode"));
         }
 
-        let mut data = packet.data();
-
-        // The buffer used for the packet is required to have
-        // `sys::AV_INPUT_BUFFER_PADDING_SIZE` padding bytes, this is guaranteed for us by
-        // `PacketData`.
-        let len = data.inner.len();
-
-        let data_ptr: *mut u8 = data.inner.as_mut_ptr();
-
-        let buf = Buffer::new(data.inner);
-
         let pts = self.pts_counter;
         self.pts_counter += 1;
 
+        self.pts_map.set(pts, packet.rotation());
+
+        let data = packet.data();
+
+        // The buffer used for the packet is required to have
+        // `sys::AV_INPUT_BUFFER_PADDING_SIZE` padding bytes, this is guaranteed for us by
+        // packet being of type `PaddedPacket`.
+        let len = data.len();
+        let data_ptr = data.as_ptr();
+
+        let buf = Buffer::new(packet.into_bufferable());
+
         unsafe {
             (*pkt).buf = buf.into();
-            (*pkt).data = data_ptr.cast();
+            (*pkt).data = data_ptr.cast_mut();
             (*pkt).pts = pts;
             // This should be the size of the data without the padding
             (*pkt).size = (len as i32) - sys::AV_INPUT_BUFFER_PADDING_SIZE as i32;
         }
 
-        self.pts_map.set(pts, packet.rotation());
         let ret = unsafe { sys::avcodec_send_packet(self.ctx, pkt) };
 
         // Regardless of errors we are done with this packet, parts of the packet might have been
@@ -191,12 +192,6 @@ impl DecodedFrame {
         unsafe { (*self.0).pts }
     }
 
-    /// The rotation of the frame.
-    pub fn rotation(&self) -> usize {
-        // SAFETY: The pointer is valid while self is alive.
-        unsafe { (*self.0).opaque as usize }
-    }
-
     fn new() -> Self {
         let ptr = unsafe { sys::av_frame_alloc() };
         assert!(!ptr.is_null());
@@ -272,6 +267,11 @@ impl Frame for DecodedFrame {
                 .try_into()
                 .expect("Non negative linesize")
         }
+    }
+
+    fn rotation(&self) -> usize {
+        // SAFETY: The pointer is valid while self is alive.
+        unsafe { (*self.0).opaque as usize }
     }
 
     fn into_bufferable(self) -> Self::AsBufferable {
