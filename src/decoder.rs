@@ -12,6 +12,8 @@ use tracing::Level;
 
 pub struct Decoder {
     ctx: *mut sys::AVCodecContext,
+    /// Counter for each packet to decode.
+    pts_counter: i64,
     /// Maps rotation values to the PTS of the incoming packet.
     pts_map: PtsMap,
 }
@@ -26,7 +28,6 @@ struct PtsMap {
 pub trait DecoderPacket {
     /// Returns
     fn data(&mut self) -> PacketData;
-    fn pts(&self) -> i64;
     fn rotation(&self) -> usize;
 }
 
@@ -57,6 +58,7 @@ impl Decoder {
 
         let dec = Decoder {
             ctx,
+            pts_counter: 0,
             pts_map: PtsMap::default(),
         };
 
@@ -94,15 +96,18 @@ impl Decoder {
 
         let buf = Buffer::new(data.inner);
 
+        let pts = self.pts_counter;
+        self.pts_counter += 1;
+
         unsafe {
             (*pkt).buf = buf.into();
             (*pkt).data = data_ptr.cast();
-            (*pkt).pts = packet.pts();
+            (*pkt).pts = pts;
             // This should be the size of the data without the padding
             (*pkt).size = (len as i32) - sys::AV_INPUT_BUFFER_PADDING_SIZE as i32;
         }
 
-        self.pts_map.set(packet.pts(), packet.rotation());
+        self.pts_map.set(pts, packet.rotation());
         let ret = unsafe { sys::avcodec_send_packet(self.ctx, pkt) };
 
         // Regardless of errors we are done with this packet, parts of the packet might have been
@@ -127,17 +132,6 @@ impl Decoder {
             dec: self,
             ended: false,
         })
-    }
-
-    pub fn timebase(&self) -> u32 {
-        unsafe {
-            let num = (*self.ctx).time_base.num;
-            let den = (*self.ctx).time_base.den;
-            // Assumption here that numerator is 1
-            assert_eq!(num, 1);
-            assert!(den.is_positive());
-            den as u32
-        }
     }
 }
 
@@ -218,7 +212,9 @@ impl DecodedFrame {
     }
 
     /// The presentation timestamp for this frame.
-    pub fn pts(&self) -> i64 {
+    ///
+    /// This is an internal value from the Decoder instance. Not a real PTS.
+    fn pts(&self) -> i64 {
         // SAFETY: The pointer is valid while self is alive.
         unsafe { (*self.0).pts }
     }
