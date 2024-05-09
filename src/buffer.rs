@@ -1,4 +1,5 @@
 use std::ffi::c_void;
+use std::ptr;
 
 use crate::sys::AVBufferRef;
 
@@ -9,21 +10,25 @@ pub(crate) struct Buffer(Option<*mut sys::AVBufferRef>);
 impl Buffer {
     /// Creates a buffer from some bufferable data
     pub fn new<B: Bufferable + Send + 'static>(bufferable: B) -> Self {
-        let (ptr, len, free) = bufferable.into_raw();
+        let buf = if let Some(v) = bufferable.reuse_av_buffer() {
+            v
+        } else {
+            let (ptr, len, free) = bufferable.into_raw();
 
-        let opaque = Box::into_raw(Box::new(free));
+            let opaque = Box::into_raw(Box::new(free));
 
-        let buf = unsafe {
-            sys::av_buffer_create(
-                ptr.cast(),
-                // This might look useless, but depending on the version of libavcodec used it's
-                // required.
-                #[allow(clippy::useless_conversion)]
-                len.try_into().unwrap(),
-                Some(free_buffer::<B::Free>),
-                opaque.cast(),
-                0,
-            )
+            unsafe {
+                sys::av_buffer_create(
+                    ptr.cast(),
+                    // This might look useless, but depending on the version of libavcodec used it's
+                    // required.
+                    #[allow(clippy::useless_conversion)]
+                    len.try_into().unwrap(),
+                    Some(free_buffer::<B::Free>),
+                    opaque.cast(),
+                    0,
+                )
+            }
         };
 
         Self(Some(buf))
@@ -69,6 +74,12 @@ pub unsafe trait Bufferable {
 
     /// Consume and turn into a pointer/length + the mechanism for freeing.
     fn into_raw(self) -> (*mut u8, usize, Self::Free);
+
+    /// Internal shortcircuit to reuse something that already is an `AVBuffer`.
+    #[doc(hidden)]
+    fn reuse_av_buffer(&self) -> Option<*mut sys::AVBufferRef> {
+        None
+    }
 }
 
 /// Free some boxed data, whatever it might be.
@@ -101,5 +112,46 @@ unsafe impl Bufferable for Vec<u8> {
         let boxed = self.into_boxed_slice();
         let ptr = Box::into_raw(boxed);
         (ptr.cast(), len, FreeBoxed(ptr))
+    }
+}
+
+unsafe impl Bufferable for () {
+    type Free = EmptyDrop;
+
+    fn into_raw(self) -> (*mut u8, usize, Self::Free) {
+        (ptr::null_mut(), 0, EmptyDrop)
+    }
+}
+
+#[doc(hidden)]
+pub struct EmptyDrop;
+
+impl Drop for EmptyDrop {
+    fn drop(&mut self) {}
+}
+
+#[doc(hidden)]
+pub struct BufferableAvFrame(pub *mut sys::AVFrame);
+
+unsafe impl Send for BufferableAvFrame {}
+
+unsafe impl Bufferable for BufferableAvFrame {
+    type Free = EmptyDrop;
+
+    fn into_raw(self) -> (*mut u8, usize, Self::Free) {
+        // This is unused, because we implement reuse_av_buffer()
+        unreachable!()
+    }
+
+    fn reuse_av_buffer(&self) -> Option<*mut sys::AVBufferRef> {
+        let bufs = unsafe { (*self.0).buf };
+
+        let first_null = bufs[0].is_null();
+        let rest_null = bufs[1..].iter().all(|b| b.is_null());
+
+        assert!(!first_null, "Expected first AVFrame buffer to be not null");
+        assert!(rest_null, "Expected the rest of AVFrame buffers to be null");
+
+        Some(bufs[0])
     }
 }

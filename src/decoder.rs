@@ -2,10 +2,11 @@ use std::ffi::c_void;
 use std::ptr;
 
 use crate::buffer::Buffer;
+use crate::buffer::BufferableAvFrame;
 
 use super::{
     av_log_set_callback, err_code_to_string, log_callback, set_log_level, sys, Codec, CodecKind,
-    Error, FrameRef, PixelFormat,
+    Error, Frame, PixelFormat,
 };
 
 use tracing::Level;
@@ -233,7 +234,9 @@ impl DecodedFrame {
     }
 }
 
-impl FrameRef for DecodedFrame {
+impl Frame for DecodedFrame {
+    type AsBufferable = BufferableAvFrame;
+
     fn width(&self) -> usize {
         // SAFETY: The pointer is valid while self is alive.
         unsafe { (*self.0).width as usize }
@@ -298,6 +301,10 @@ impl FrameRef for DecodedFrame {
                 .try_into()
                 .expect("Non negative linesize")
         }
+    }
+
+    fn into_bufferable(self) -> Self::AsBufferable {
+        BufferableAvFrame(self.0)
     }
 }
 
