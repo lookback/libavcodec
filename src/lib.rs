@@ -13,6 +13,7 @@ mod decoder;
 pub use decoder::{DecodedFrame, Decoder, DecoderPacket, PacketData};
 mod error;
 pub use error::Error;
+mod buffer;
 
 use tracing::Level;
 use tracing::{debug, error, info, trace, warn};
