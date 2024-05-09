@@ -59,85 +59,6 @@ fn err_code_to_string(code: i32) -> String {
     c.to_string_lossy().to_string()
 }
 
-struct RawFrame(*mut sys::AVFrame);
-
-impl RawFrame {
-    fn new(pix_fmt: PixelFormat, width: u32, height: u32) -> Result<Self, Error> {
-        unsafe {
-            let frame = sys::av_frame_alloc();
-            (*frame).format = pix_fmt as i32;
-            (*frame).width = width as i32;
-            (*frame).height = height as i32;
-
-            // let err = sys::av_frame_get_buffer(frame, 0);
-            // if err < 0 {
-            //     return Err(Error::AllocateFrameFailed(err, err_code_to_string(err)));
-            // }
-
-            // sys::av_frame_make_writable(frame);
-
-            Ok(Self(frame))
-        }
-    }
-
-    fn fill(&mut self, frame: &dyn FrameRef, pts: i64) {
-        unsafe {
-            let width = (*self.0).width as usize;
-            let height = (*self.0).height as usize;
-
-            assert_eq!(width, frame.width());
-            assert_eq!(height, frame.height());
-
-            (*self.0).pts = pts;
-
-            let plane_count = frame.plane_count();
-
-            let mut planes = [ptr::null_mut(); 8];
-            let mut strides = [0; 8];
-
-            for i in 0..plane_count {
-                planes[i] = frame.get_plane(i).as_ptr().cast_mut();
-                strides[i] = frame.get_stride(i) as i32;
-            }
-
-            (*self.0).data = planes;
-            (*self.0).linesize = strides;
-        }
-    }
-}
-
-impl Drop for RawFrame {
-    fn drop(&mut self) {
-        unsafe {
-            sys::av_frame_free(&mut self.0);
-            self.0 = ptr::null_mut();
-        }
-    }
-}
-
-struct RawPacket(*mut sys::AVPacket);
-
-impl RawPacket {
-    pub fn new() -> Self {
-        unsafe {
-            let pkt = sys::av_packet_alloc();
-            (*pkt).data = ptr::null_mut();
-            (*pkt).size = 0;
-            sys::av_init_packet(pkt);
-            Self(pkt)
-        }
-    }
-}
-
-impl Drop for RawPacket {
-    fn drop(&mut self) {
-        unsafe {
-            sys::av_packet_free(&mut self.0);
-            self.0 = ptr::null_mut();
-        }
-    }
-}
-
 pub struct Packet<'a> {
     pkt: *mut sys::AVPacket,
     pub data: &'a [u8],
@@ -307,24 +228,5 @@ mod test {
     #[test]
     fn test_err_to_string() {
         println!("{:#?}", err_code_to_string(-22));
-    }
-
-    #[test]
-    fn test_instantiate_encoder() {
-        let codec = Codec::list(CodecKind::Encoder)
-            .find(|c| c.name == "libx264")
-            .unwrap();
-        let config = EncoderConfig {
-            bitrate: 2_000_000,
-            width: 1024,
-            height: 768,
-            fps: 30,
-            profile: None,
-            thread_count: 4,
-            max_b_frames: 0,
-            keyframe_distance: 300,
-            x264_realtime: true,
-        };
-        Encoder::new(&codec, &config).unwrap();
     }
 }
