@@ -9,9 +9,9 @@ use buffer::Bufferable;
 use sys::AVPixelFormat as PixelFormat;
 
 mod encoder;
-pub use encoder::{Encoder, EncoderConfig, EncoderProfile, PacketIterator};
+pub use encoder::{Encoder, EncoderConfig, EncoderProfile};
 mod decoder;
-pub use decoder::{DecodedFrame, Decoder, DecoderPacket, PacketData};
+pub use decoder::{DecodedFrame, Decoder};
 mod error;
 pub use error::Error;
 mod buffer;
@@ -29,6 +29,36 @@ pub trait Frame {
     fn get_stride(&self, i: usize) -> usize;
 
     fn into_bufferable(self) -> Self::AsBufferable;
+}
+
+pub trait Packet {
+    /// Returns
+    fn data(&mut self) -> PacketData;
+    fn rotation(&self) -> usize;
+}
+
+pub struct PacketData {
+    inner: Box<[u8]>,
+}
+
+impl PacketData {
+    pub fn new(mut data: Vec<u8>) -> Self {
+        data.extend_from_slice(&[0; sys::AV_INPUT_BUFFER_PADDING_SIZE as usize]);
+
+        Self {
+            inner: data.into_boxed_slice(),
+        }
+    }
+}
+
+impl From<&[u8]> for PacketData {
+    fn from(value: &[u8]) -> Self {
+        let new_size = value.len() + sys::AV_INPUT_BUFFER_PADDING_SIZE as usize;
+        let mut vec = Vec::with_capacity(new_size);
+        vec.extend_from_slice(value);
+
+        Self::new(vec)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

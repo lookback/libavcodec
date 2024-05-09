@@ -4,7 +4,7 @@ use std::ptr;
 use tracing::Level;
 
 use crate::buffer::Buffer;
-use crate::DecoderPacket;
+use crate::Packet;
 use crate::PacketData;
 
 use super::sys::AVPixelFormat as PixelFormat;
@@ -140,7 +140,7 @@ impl Encoder {
     pub fn encode(
         &mut self,
         frame: impl Frame,
-    ) -> Result<impl Iterator<Item = Result<EncodedPacket, Error>> + '_, Error> {
+    ) -> Result<impl Iterator<Item = Result<impl Packet, Error>> + '_, Error> {
         let pts = self.pts_counter;
         self.pts_counter += 1;
 
@@ -197,7 +197,7 @@ impl Drop for Encoder {
     }
 }
 
-pub struct PacketIterator<'a> {
+struct PacketIterator<'a> {
     enc: Option<&'a mut Encoder>,
 }
 
@@ -227,11 +227,11 @@ impl<'a> Iterator for PacketIterator<'a> {
     }
 }
 
-pub struct EncodedPacket {
+struct EncodedPacket {
     pkt: *mut sys::AVPacket,
 }
 
-impl DecoderPacket for EncodedPacket {
+impl Packet for EncodedPacket {
     fn data(&mut self) -> PacketData {
         todo!()
     }

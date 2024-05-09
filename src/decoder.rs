@@ -3,6 +3,7 @@ use std::ptr;
 
 use crate::buffer::Buffer;
 use crate::buffer::BufferableAvFrame;
+use crate::Packet;
 
 use super::{
     av_log_set_callback, err_code_to_string, log_callback, set_log_level, sys, Codec, CodecKind,
@@ -24,16 +25,6 @@ unsafe impl Send for Decoder {}
 struct PtsMap {
     map: [(i64, usize); 16],
     cur: usize,
-}
-
-pub trait DecoderPacket {
-    /// Returns
-    fn data(&mut self) -> PacketData;
-    fn rotation(&self) -> usize;
-}
-
-pub struct PacketData {
-    inner: Box<[u8]>,
 }
 
 /// A single frame of video or audio.
@@ -78,7 +69,7 @@ impl Decoder {
     /// Returns an iterator over the resulting frames.
     pub fn decode(
         &mut self,
-        packet: &mut dyn DecoderPacket,
+        packet: &mut dyn Packet,
     ) -> Result<impl Iterator<Item = Result<DecodedFrame, Error>> + '_, Error> {
         let mut pkt = unsafe { sys::av_packet_alloc() };
 
@@ -166,26 +157,6 @@ impl<'a> Iterator for DecoderIterator<'a> {
         };
 
         Some(Ok(frame))
-    }
-}
-
-impl PacketData {
-    pub fn new(mut data: Vec<u8>) -> Self {
-        data.extend_from_slice(&[0; sys::AV_INPUT_BUFFER_PADDING_SIZE as usize]);
-
-        Self {
-            inner: data.into_boxed_slice(),
-        }
-    }
-}
-
-impl From<&[u8]> for PacketData {
-    fn from(value: &[u8]) -> Self {
-        let new_size = value.len() + sys::AV_INPUT_BUFFER_PADDING_SIZE as usize;
-        let mut vec = Vec::with_capacity(new_size);
-        vec.extend_from_slice(value);
-
-        Self::new(vec)
     }
 }
 
