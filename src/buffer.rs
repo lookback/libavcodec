@@ -155,3 +155,22 @@ unsafe impl Bufferable for BufferableAvFrame {
         Some(bufs[0])
     }
 }
+
+#[doc(hidden)]
+pub struct BufferableAvPacket(pub *mut sys::AVPacket);
+
+unsafe impl Send for BufferableAvPacket {}
+
+unsafe impl Bufferable for BufferableAvPacket {
+    type Free = EmptyDrop;
+
+    fn into_raw(self) -> (*mut u8, usize, Self::Free) {
+        // This is unused, because we implement reuse_av_buffer()
+        unreachable!()
+    }
+
+    fn reuse_av_buffer(&self) -> Option<*mut sys::AVBufferRef> {
+        let buf = unsafe { (*self.0).buf };
+        Some(buf)
+    }
+}

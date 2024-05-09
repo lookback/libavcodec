@@ -4,8 +4,8 @@ use std::ptr;
 use tracing::Level;
 
 use crate::buffer::Buffer;
+use crate::buffer::BufferableAvPacket;
 use crate::Packet;
-use crate::PacketData;
 
 use super::sys::AVPixelFormat as PixelFormat;
 use super::{av_log_set_callback, err_code_to_string, log_callback, set_log_level};
@@ -140,7 +140,7 @@ impl Encoder {
     pub fn encode(
         &mut self,
         frame: impl Frame,
-    ) -> Result<impl Iterator<Item = Result<impl Packet, Error>> + '_, Error> {
+    ) -> Result<impl Iterator<Item = Result<impl Packet<[u8]>, Error>> + '_, Error> {
         let pts = self.pts_counter;
         self.pts_counter += 1;
 
@@ -159,6 +159,8 @@ impl Encoder {
 
         let width = frame.width() as i32;
         let height = frame.height() as i32;
+
+        let rotation = frame.rotation();
 
         let buf = Buffer::new(frame.into_bufferable());
         let mut buffers = [ptr::null_mut(); MAX_PLANES];
@@ -184,7 +186,10 @@ impl Encoder {
             return Err(Error::EncodeFrameFailed(ret, err_code_to_string(ret)));
         }
 
-        Ok(PacketIterator { enc: Some(self) })
+        Ok(PacketIterator {
+            enc: Some(self),
+            rotation,
+        })
     }
 }
 
@@ -199,6 +204,7 @@ impl Drop for Encoder {
 
 struct PacketIterator<'a> {
     enc: Option<&'a mut Encoder>,
+    rotation: usize,
 }
 
 impl<'a> Iterator for PacketIterator<'a> {
@@ -222,32 +228,36 @@ impl<'a> Iterator for PacketIterator<'a> {
                 )));
             }
 
-            Some(Ok(EncodedPacket { pkt }))
+            Some(Ok(EncodedPacket {
+                pkt,
+                rotation: self.rotation,
+            }))
         }
     }
 }
 
 struct EncodedPacket {
     pkt: *mut sys::AVPacket,
+    rotation: usize,
 }
 
-impl Packet for EncodedPacket {
-    fn data(&mut self) -> PacketData {
-        todo!()
-    }
+impl Packet<[u8]> for EncodedPacket {
+    type AsBufferable = BufferableAvPacket;
 
-    fn rotation(&self) -> usize {
-        todo!()
-    }
-}
-
-impl EncodedPacket {
-    pub fn data(&self) -> &[u8] {
+    fn data(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts((*self.pkt).data, (*self.pkt).size as usize) }
     }
 
-    pub fn keyframe(&self) -> bool {
+    fn rotation(&self) -> usize {
+        self.rotation
+    }
+
+    fn keyframe(&self) -> bool {
         unsafe { (*self.pkt).flags & sys::AV_PKT_FLAG_KEY as i32 > 0 }
+    }
+
+    fn into_bufferable(self) -> Self::AsBufferable {
+        BufferableAvPacket(self.pkt)
     }
 }
 
