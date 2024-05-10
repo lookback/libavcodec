@@ -5,16 +5,19 @@ use std::ffi::CStr;
 use std::ptr;
 
 mod sys;
-use buffer::Bufferable;
 use sys::AVPixelFormat as PixelFormat;
 
 mod encoder;
 pub use encoder::{Encoder, EncoderConfig, EncoderProfile};
+
 mod decoder;
 pub use decoder::Decoder;
+
 mod error;
 pub use error::Error;
+
 mod buffer;
+pub use buffer::Bufferable;
 
 use tracing::Level;
 use tracing::{debug, error, info, trace, warn};
