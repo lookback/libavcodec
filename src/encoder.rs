@@ -6,6 +6,7 @@ use tracing::Level;
 use crate::buffer::Buffer;
 use crate::buffer::BufferableAvBuffer;
 use crate::Packet;
+use crate::MAX_PLANES;
 
 use super::sys::AVPixelFormat as PixelFormat;
 use super::{av_log_set_callback, err_code_to_string, log_callback, set_log_level};
@@ -147,8 +148,6 @@ impl Encoder {
         self.pts_counter += 1;
 
         let mut fr = unsafe { sys::av_frame_alloc() };
-
-        const MAX_PLANES: usize = sys::AV_NUM_DATA_POINTERS as usize;
 
         let mut planes = [ptr::null_mut(); MAX_PLANES];
         let mut strides = [0; MAX_PLANES];

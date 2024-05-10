@@ -5,6 +5,7 @@ use crate::buffer::Buffer;
 use crate::buffer::BufferableAvBuffer;
 use crate::Packet;
 use crate::PaddedData;
+use crate::MAX_PLANES;
 
 use super::{
     av_log_set_callback, err_code_to_string, log_callback, set_log_level, sys, Codec, CodecKind,
@@ -228,6 +229,8 @@ impl Frame for DecodedFrame {
     }
 
     fn get_plane(&self, i: usize) -> &[u8] {
+        assert!(i < MAX_PLANES);
+
         // SAFETY:
         // * The pointer is valid while self is alive.
         // * The value calculated for `len` is correct
@@ -254,7 +257,7 @@ impl Frame for DecodedFrame {
     }
 
     fn get_stride(&self, i: usize) -> usize {
-        assert!(i < sys::AV_NUM_DATA_POINTERS as usize);
+        assert!(i < MAX_PLANES);
 
         // SAFETY: The pointer is valid while self is alive.
         unsafe {

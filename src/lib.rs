@@ -19,6 +19,8 @@ mod buffer;
 use tracing::Level;
 use tracing::{debug, error, info, trace, warn};
 
+const MAX_PLANES: usize = sys::AV_NUM_DATA_POINTERS as usize;
+
 pub trait Frame {
     type AsBufferable: Bufferable + Send + 'static;
 
