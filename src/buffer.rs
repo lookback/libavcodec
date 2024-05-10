@@ -131,11 +131,18 @@ impl Drop for EmptyDrop {
 }
 
 #[doc(hidden)]
-pub struct BufferableAvFrame(pub *mut sys::AVFrame);
+pub struct BufferableAvBuffer(*mut sys::AVBufferRef);
 
-unsafe impl Send for BufferableAvFrame {}
+impl BufferableAvBuffer {
+    pub fn new(p: *mut sys::AVBufferRef) -> Self {
+        unsafe { sys::av_buffer_ref(p) };
+        BufferableAvBuffer(p)
+    }
+}
 
-unsafe impl Bufferable for BufferableAvFrame {
+unsafe impl Send for BufferableAvBuffer {}
+
+unsafe impl Bufferable for BufferableAvBuffer {
     type Free = EmptyDrop;
 
     fn into_raw(self) -> (*mut u8, usize, Self::Free) {
@@ -144,7 +151,13 @@ unsafe impl Bufferable for BufferableAvFrame {
     }
 
     fn reuse_av_buffer(&self) -> Option<*mut sys::AVBufferRef> {
-        let bufs = unsafe { (*self.0).buf };
+        Some(self.0)
+    }
+}
+
+impl From<*mut sys::AVFrame> for BufferableAvBuffer {
+    fn from(v: *mut sys::AVFrame) -> Self {
+        let bufs = unsafe { (*v).buf };
 
         let first_null = bufs[0].is_null();
         let rest_null = bufs[1..].iter().all(|b| b.is_null());
@@ -152,25 +165,13 @@ unsafe impl Bufferable for BufferableAvFrame {
         assert!(!first_null, "Expected first AVFrame buffer to be not null");
         assert!(rest_null, "Expected the rest of AVFrame buffers to be null");
 
-        Some(bufs[0])
+        BufferableAvBuffer::new(bufs[0])
     }
 }
 
-#[doc(hidden)]
-pub struct BufferableAvPacket(pub *mut sys::AVPacket);
-
-unsafe impl Send for BufferableAvPacket {}
-
-unsafe impl Bufferable for BufferableAvPacket {
-    type Free = EmptyDrop;
-
-    fn into_raw(self) -> (*mut u8, usize, Self::Free) {
-        // This is unused, because we implement reuse_av_buffer()
-        unreachable!()
-    }
-
-    fn reuse_av_buffer(&self) -> Option<*mut sys::AVBufferRef> {
-        let buf = unsafe { (*self.0).buf };
-        Some(buf)
+impl From<*mut sys::AVPacket> for BufferableAvBuffer {
+    fn from(v: *mut sys::AVPacket) -> Self {
+        let buf = unsafe { (*v).buf };
+        BufferableAvBuffer::new(buf)
     }
 }

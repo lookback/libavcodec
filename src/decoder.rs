@@ -2,7 +2,7 @@ use std::ffi::c_void;
 use std::ptr;
 
 use crate::buffer::Buffer;
-use crate::buffer::BufferableAvFrame;
+use crate::buffer::BufferableAvBuffer;
 use crate::Packet;
 use crate::PaddedData;
 
@@ -201,7 +201,7 @@ impl DecodedFrame {
 }
 
 impl Frame for DecodedFrame {
-    type AsBufferable = BufferableAvFrame;
+    type AsBufferable = BufferableAvBuffer;
 
     fn width(&self) -> usize {
         // SAFETY: The pointer is valid while self is alive.
@@ -275,7 +275,7 @@ impl Frame for DecodedFrame {
     }
 
     fn into_bufferable(self) -> Self::AsBufferable {
-        BufferableAvFrame(self.0)
+        self.0.into()
     }
 }
 
