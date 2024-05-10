@@ -11,7 +11,7 @@ use sys::AVPixelFormat as PixelFormat;
 mod encoder;
 pub use encoder::{Encoder, EncoderConfig, EncoderProfile};
 mod decoder;
-pub use decoder::{DecodedFrame, Decoder};
+pub use decoder::Decoder;
 mod error;
 pub use error::Error;
 mod buffer;
@@ -33,6 +33,21 @@ pub trait Frame {
     fn rotation(&self) -> usize;
 
     fn into_bufferable(self) -> Self::AsBufferable;
+
+    /// Consume self and turn into a pointer/length + the mechanism for freeing.
+    fn into_raw(
+        self,
+    ) -> (
+        *mut u8,
+        usize,
+        <<Self as Frame>::AsBufferable as Bufferable>::Free,
+    )
+    where
+        Self: Sized,
+    {
+        let bufferable = self.into_bufferable();
+        bufferable.into_raw()
+    }
 }
 
 pub trait Packet<Data>
@@ -46,6 +61,21 @@ where
     fn keyframe(&self) -> bool;
 
     fn into_bufferable(self) -> Self::AsBufferable;
+
+    /// Consume self and turn into a pointer/length + the mechanism for freeing.
+    fn into_raw(
+        self,
+    ) -> (
+        *mut u8,
+        usize,
+        <<Self as Packet<Data>>::AsBufferable as Bufferable>::Free,
+    )
+    where
+        Self: Sized,
+    {
+        let bufferable = self.into_bufferable();
+        bufferable.into_raw()
+    }
 }
 
 pub trait PaddedData {
