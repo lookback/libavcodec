@@ -4,7 +4,7 @@ use std::ptr;
 use tracing::Level;
 
 use crate::buffer::Buffer;
-use crate::buffer::BufferableAvPacket;
+use crate::buffer::BufferableAvBuffer;
 use crate::Packet;
 
 use super::sys::AVPixelFormat as PixelFormat;
@@ -242,7 +242,7 @@ struct EncodedPacket {
 }
 
 impl Packet<[u8]> for EncodedPacket {
-    type AsBufferable = BufferableAvPacket;
+    type AsBufferable = BufferableAvBuffer;
 
     fn data(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts((*self.pkt).data, (*self.pkt).size as usize) }
@@ -257,7 +257,7 @@ impl Packet<[u8]> for EncodedPacket {
     }
 
     fn into_bufferable(self) -> Self::AsBufferable {
-        BufferableAvPacket(self.pkt)
+        self.pkt.into()
     }
 }
 
