@@ -88,8 +88,6 @@ pub struct Codec {
     /// SAFETY: These values are allocated and initialised at link time and then valid until
     /// process exit.
     ptr: *const sys::AVCodec,
-    pub name: &'static str,
-    pub long_name: &'static str,
 }
 
 unsafe impl Send for Codec {}
@@ -118,6 +116,11 @@ fn err_code_to_string(code: i32) -> String {
 }
 
 struct CodecIterator(Option<*mut c_void>, CodecKind);
+
+unsafe fn str_of(ptr: *const c_char) -> &'static str {
+    let name = CStr::from_ptr(ptr);
+    name.to_str().expect("a utf-8 string")
+}
 
 impl Iterator for CodecIterator {
     type Item = Codec;
@@ -158,16 +161,15 @@ impl Codec {
     /// **SAFETY:** The caller must guarantee that the pointer is valid until the process ends.
     /// This is the case for pointers returned by functions like `av_codec_iterate`.
     unsafe fn from_ptr(codec: *const sys::AVCodec) -> Self {
-        unsafe fn str_of(ptr: *const c_char) -> &'static str {
-            let name = CStr::from_ptr(ptr);
-            name.to_str().expect("a utf-8 string")
-        }
+        Codec { ptr: codec }
+    }
 
-        Codec {
-            ptr: codec,
-            name: str_of((*codec).name),
-            long_name: str_of((*codec).long_name),
-        }
+    pub fn name(&self) -> &'static str {
+        unsafe { str_of((*self.ptr).name) }
+    }
+
+    pub fn long_name(&self) -> &'static str {
+        unsafe { str_of((*self.ptr).long_name) }
     }
 
     pub fn is_hw(&self) -> bool {
@@ -263,7 +265,7 @@ mod test {
         println!(
             "{:#?}",
             Codec::list(CodecKind::Encoder)
-                .map(|c| c.name)
+                .map(|c| c.name())
                 .collect::<Vec<_>>()
         );
     }

@@ -68,7 +68,7 @@ impl Encoder {
             av_log_set_callback(Some(log_callback));
 
             if codec.kind() != CodecKind::Encoder {
-                return Err(Error::CodecIsNotEncoder(codec.name));
+                return Err(Error::CodecIsNotEncoder(codec.name()));
             }
 
             let codec = codec.ptr;
@@ -277,7 +277,7 @@ mod test {
     #[test]
     fn test_instantiate_encoder() {
         let codec = Codec::list(CodecKind::Encoder)
-            .find(|c| c.name == "libx264")
+            .find(|c| c.name() == "libx264")
             .unwrap();
         let config = EncoderConfig {
             bitrate: 2_000_000,
