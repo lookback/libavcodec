@@ -14,6 +14,8 @@ use super::{sys, Codec, CodecKind, Error, Frame};
 pub struct Encoder {
     codec: *const sys::AVCodec,
     ctx: *mut sys::AVCodecContext,
+    /// We don't take an external PTS in the encode() call, instead we use the FPS
+    /// as time base and increase this counter by 1 for each frame.
     pts_counter: i64,
 }
 

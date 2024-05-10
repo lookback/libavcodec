@@ -15,7 +15,8 @@ use tracing::Level;
 
 pub struct Decoder {
     ctx: *mut sys::AVCodecContext,
-    /// Counter for each packet to decode.
+    /// Counter for each packet to decode. Has no relation to "real" PTS and increases with 1
+    /// for each call to decode()
     pts_counter: i64,
     /// Maps rotation values to the PTS of the incoming packet.
     pts_map: PtsMap,
