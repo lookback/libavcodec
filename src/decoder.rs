@@ -42,7 +42,7 @@ impl Decoder {
         }
 
         if codec.kind() != CodecKind::Decoder {
-            return Err(Error::CodecIsNotDecoder(codec.name));
+            return Err(Error::CodecIsNotDecoder(codec.name()));
         }
 
         let codec = codec.ptr;
