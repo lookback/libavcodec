@@ -167,7 +167,7 @@ impl DecodedFrame {
     /// Return the inner ptr for the frame.
     ///
     /// ## Safety
-    /// This pointer **MUST** eventually be passed back to [`Frame::from_raw`] to avoid leaking
+    /// This pointer **MUST** eventually be passed back to [`DecodedFrame::from_raw`] to avoid leaking
     /// memory.
     pub unsafe fn into_raw(mut self) -> *mut c_void {
         let ptr = self.0;
@@ -176,10 +176,10 @@ impl DecodedFrame {
         ptr as *mut c_void
     }
 
-    /// Create a [`Frame`] from a raw pointer obtained from [`Frame::into_raw`].
+    /// Create a [`Frame`] from a raw pointer obtained from [`DecodedFrame::into_raw`].
     ///
     /// ## Safety
-    /// `ptr` **MUST** have been originally obtained from [`Frame::into_raw`]
+    /// `ptr` **MUST** have been originally obtained from [`DecodedFrame::into_raw`]
     pub unsafe fn from_raw(ptr: *mut c_void) -> Self {
         assert!(!ptr.is_null());
 
