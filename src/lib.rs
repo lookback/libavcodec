@@ -235,7 +235,7 @@ unsafe extern "C" fn log_callback(
 // expected fn pointer `unsafe extern "C" fn(_, _, _, *mut __va_list_tag)`
 // found       fn item `unsafe extern "C" fn(_, _, _, [__va_list_tag; 1]) {log_callback}`
 extern "C" {
-    pub fn av_log_set_callback(
+    pub(crate) fn av_log_set_callback(
         callback: ::std::option::Option<
             unsafe extern "C" fn(
                 arg1: *mut c_void,
@@ -248,10 +248,10 @@ extern "C" {
 }
 
 extern "C" {
-    pub fn log_to_string(fmt: *const c_char, vargs: *const c_void) -> *mut c_char;
+    pub(crate) fn log_to_string(fmt: *const c_char, vargs: *const c_void) -> *mut c_char;
 }
 extern "C" {
-    pub fn log_to_string_free(buffer: *mut c_char);
+    pub(crate) fn log_to_string_free(buffer: *mut c_char);
 }
 
 #[cfg(test)]
