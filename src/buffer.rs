@@ -97,21 +97,23 @@ impl<T: ?Sized> Drop for FreeBoxed<T> {
 unsafe impl Bufferable for Box<[u8]> {
     type Free = FreeBoxed<[u8]>;
 
-    fn into_raw(self) -> (*mut u8, usize, Self::Free) {
+    fn into_raw(mut self) -> (*mut u8, usize, Self::Free) {
         let len = self.len();
+        let data_ptr = self.as_mut_ptr();
         let ptr = Box::into_raw(self);
-        (ptr.cast(), len, FreeBoxed(ptr))
+        (data_ptr, len, FreeBoxed(ptr))
     }
 }
 
 unsafe impl Bufferable for Vec<u8> {
     type Free = FreeBoxed<[u8]>;
 
-    fn into_raw(self) -> (*mut u8, usize, Self::Free) {
+    fn into_raw(mut self) -> (*mut u8, usize, Self::Free) {
         let len = self.len();
+        let data_ptr = self.as_mut_ptr();
         let boxed = self.into_boxed_slice();
         let ptr = Box::into_raw(boxed);
-        (ptr.cast(), len, FreeBoxed(ptr))
+        (data_ptr, len, FreeBoxed(ptr))
     }
 }
 
