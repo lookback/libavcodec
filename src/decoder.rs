@@ -31,7 +31,7 @@ struct PtsMap {
 }
 
 /// A single frame of video or audio.
-pub struct DecodedFrame(*mut sys::AVFrame);
+struct DecodedFrame(*mut sys::AVFrame);
 
 impl Decoder {
     /// Create a new decoder
@@ -73,7 +73,7 @@ impl Decoder {
     pub fn decode<Data: PaddedData>(
         &mut self,
         packet: impl Packet<Data>,
-    ) -> Result<impl Iterator<Item = Result<DecodedFrame, Error>> + '_, Error> {
+    ) -> Result<impl Iterator<Item = Result<impl Frame, Error>> + '_, Error> {
         let mut pkt = unsafe { sys::av_packet_alloc() };
 
         if pkt.is_null() {
@@ -164,26 +164,11 @@ impl<'a> Iterator for DecoderIterator<'a> {
 }
 
 impl DecodedFrame {
-    /// Return the inner ptr for the frame.
-    ///
-    /// ## Safety
-    /// This pointer **MUST** eventually be passed back to [`DecodedFrame::from_raw`] to avoid leaking
-    /// memory.
-    pub unsafe fn into_raw(mut self) -> *mut c_void {
-        let ptr = self.0;
-        self.0 = ptr::null_mut();
-
-        ptr as *mut c_void
-    }
-
-    /// Create a [`Frame`] from a raw pointer obtained from [`DecodedFrame::into_raw`].
-    ///
-    /// ## Safety
-    /// `ptr` **MUST** have been originally obtained from [`DecodedFrame::into_raw`]
-    pub unsafe fn from_raw(ptr: *mut c_void) -> Self {
+    fn new() -> Self {
+        let ptr = unsafe { sys::av_frame_alloc() };
         assert!(!ptr.is_null());
 
-        Self(ptr.cast())
+        Self(ptr)
     }
 
     /// The presentation timestamp for this frame.
@@ -192,13 +177,6 @@ impl DecodedFrame {
     fn pts(&self) -> i64 {
         // SAFETY: The pointer is valid while self is alive.
         unsafe { (*self.0).pts }
-    }
-
-    fn new() -> Self {
-        let ptr = unsafe { sys::av_frame_alloc() };
-        assert!(!ptr.is_null());
-
-        Self(ptr)
     }
 }
 
