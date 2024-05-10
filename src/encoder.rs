@@ -29,36 +29,9 @@ pub struct EncoderConfig {
     pub width: u32,
     pub height: u32,
     pub fps: u8,
-    pub profile: Option<EncoderProfile>,
     pub thread_count: u32,
     pub max_b_frames: u32,
     pub keyframe_distance: u32,
-    pub x264_realtime: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EncoderProfile {
-    H264Constrained,
-    H264Intra,
-    H264Baseline,
-    H264ConstrainedBaseline,
-    H264Main,
-    H264Extended,
-    H264High,
-}
-
-impl EncoderProfile {
-    fn as_avcodec(&self) -> u32 {
-        match self {
-            Self::H264Constrained => sys::FF_PROFILE_H264_CONSTRAINED,
-            Self::H264Intra => sys::FF_PROFILE_H264_INTRA,
-            Self::H264Baseline => sys::FF_PROFILE_H264_BASELINE,
-            Self::H264ConstrainedBaseline => sys::FF_PROFILE_H264_CONSTRAINED_BASELINE,
-            Self::H264Main => sys::FF_PROFILE_H264_MAIN,
-            Self::H264Extended => sys::FF_PROFILE_H264_EXTENDED,
-            Self::H264High => sys::FF_PROFILE_H264_HIGH,
-        }
-    }
 }
 
 impl Encoder {
@@ -97,26 +70,31 @@ impl Encoder {
                     den: 1,
                 };
                 (*ctx).pix_fmt = PixelFormat::AV_PIX_FMT_YUV420P;
-                if let Some(profile) = config.profile {
-                    (*ctx).profile = profile.as_avcodec() as i32;
-                }
                 (*ctx).thread_count = config.thread_count as i32;
                 (*ctx).max_b_frames = config.max_b_frames as i32;
                 (*ctx).gop_size = config.keyframe_distance as i32;
+                (*ctx).flags = sys::AV_CODEC_FLAG_LOW_DELAY as i32;
+                (*ctx).flags2 = sys::AV_CODEC_FLAG2_FAST as i32;
             }
 
-            if config.x264_realtime {
-                // This sets options directly on libx264
-                if (*codec).id == sys::AVCodecID::AV_CODEC_ID_H264 {
-                    const OPTS: &[(&CStr, &CStr)] = &[
-                        //
-                        (c"preset", c"ultrafast"),
-                        (c"tune", c"zerolatency"),
-                    ];
-                    for (k, v) in OPTS {
-                        sys::av_opt_set((*ctx).priv_data, k.as_ptr(), v.as_ptr(), 0);
-                    }
+            if (*codec).id == sys::AVCodecID::AV_CODEC_ID_H264 {
+                // To be WebRTC compatible
+                (*ctx).profile = sys::FF_PROFILE_H264_CONSTRAINED_BASELINE as i32;
+
+                const OPTS: &[(&CStr, &CStr)] = &[
+                    //
+                    (c"preset", c"ultrafast"),
+                    (c"tune", c"zerolatency"),
+                ];
+                for (k, v) in OPTS {
+                    // This sets options directly on libx264
+                    sys::av_opt_set((*ctx).priv_data, k.as_ptr(), v.as_ptr(), 0);
                 }
+            }
+
+            if (*codec).name == c"libvpx".as_ptr() || (*codec).name == c"libvpx-vp9".as_ptr() {
+                // This sets options directly on libvpx
+                sys::av_opt_set((*ctx).priv_data, c"lag_in_frames".as_ptr(), &0, 0);
             }
 
             let err = sys::avcodec_open2(ctx, codec, ptr::null_mut());
@@ -284,11 +262,9 @@ mod test {
             width: 1024,
             height: 768,
             fps: 30,
-            profile: None,
             thread_count: 4,
             max_b_frames: 0,
             keyframe_distance: 300,
-            x264_realtime: true,
         };
         Encoder::new(&codec, &config).unwrap();
     }
