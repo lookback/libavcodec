@@ -35,10 +35,10 @@ impl Buffer {
     }
 }
 
-impl Into<*mut AVBufferRef> for Buffer {
-    fn into(mut self) -> *mut AVBufferRef {
+impl From<Buffer> for *mut AVBufferRef {
+    fn from(mut value: Buffer) -> Self {
         // This .take() is the whole reason we have Option<*mut AvBufferRef)
-        self.0.take().expect("existing pointer for alive Buffer")
+        value.0.take().expect("existing pointer for alive Buffer")
     }
 }
 
@@ -65,7 +65,8 @@ unsafe extern "C" fn free_buffer<T>(opaque: *mut c_void, _: *mut u8) {
 
 /// Something that can be turned into pointer + length and later freed.
 ///
-/// SAFETY: The implementation of [`Bufferable`] must guarantee the pointer
+/// # Safety
+/// The implementation of [`Bufferable`] must guarantee the pointer
 /// produced by [`Bufferable::into_raw()`] is not shared by the time it is handed
 /// over to [`Buffer::new()`].
 pub unsafe trait Bufferable {

@@ -230,7 +230,7 @@ impl Frame for DecodedFrame {
                 stride * (height / 2)
             };
 
-            std::slice::from_raw_parts(ptr, len as usize)
+            std::slice::from_raw_parts(ptr, len)
         }
     }
 

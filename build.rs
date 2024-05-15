@@ -7,13 +7,13 @@ fn main() {
     // Get the cargo out directory.
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("env variable OUT_DIR not found"));
 
-    let mut headers = vec![];
-
-    headers.push("libavcodec/avcodec.h");
-    headers.push("libavutil/opt.h");
-    headers.push("libavutil/mem.h");
-    headers.push("libavutil/imgutils.h");
-    headers.push("libavutil/pixdesc.h");
+    let headers = [
+        "libavcodec/avcodec.h",
+        "libavutil/opt.h",
+        "libavutil/mem.h",
+        "libavutil/imgutils.h",
+        "libavutil/pixdesc.h",
+    ];
 
     let lib1 = pkg_config::probe_library("libavcodec").expect("find libavcodec");
     let lib2 = pkg_config::probe_library("libavutil").expect("find libavutil");
