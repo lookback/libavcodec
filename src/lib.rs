@@ -81,6 +81,7 @@ where
     }
 }
 
+#[allow(clippy::len_without_is_empty)]
 pub trait PaddedData {
     fn len(&self) -> usize;
     fn as_ptr(&self) -> *const u8;
