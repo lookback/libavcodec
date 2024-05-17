@@ -104,6 +104,7 @@ impl From<&[u8]> for PaddedDataImpl {
         let new_len = value.len() + sys::AV_INPUT_BUFFER_PADDING_SIZE as usize;
         let mut vec = Vec::with_capacity(new_len);
         vec.extend_from_slice(value);
+        vec.extend_from_slice(&[0; sys::AV_INPUT_BUFFER_PADDING_SIZE as usize]);
         PaddedDataImpl(vec.into_boxed_slice())
     }
 }
