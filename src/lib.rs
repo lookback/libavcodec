@@ -5,6 +5,7 @@ use std::ffi::CStr;
 use std::ptr;
 
 mod sys;
+use buffer::FreeBoxed;
 use sys::AVPixelFormat as PixelFormat;
 
 mod encoder;
@@ -87,13 +88,14 @@ pub trait PaddedData {
     fn as_ptr(&self) -> *const u8;
 }
 
-pub struct PaddedDataImpl(Vec<u8>);
+pub struct PaddedDataImpl(Box<[u8]>);
 
 impl From<Vec<u8>> for PaddedDataImpl {
     fn from(mut value: Vec<u8>) -> Self {
         let new_len = value.len() + sys::AV_INPUT_BUFFER_PADDING_SIZE as usize;
         value.resize(new_len, 0);
-        PaddedDataImpl(value)
+
+        PaddedDataImpl(value.into_boxed_slice())
     }
 }
 
@@ -102,8 +104,7 @@ impl From<&[u8]> for PaddedDataImpl {
         let new_len = value.len() + sys::AV_INPUT_BUFFER_PADDING_SIZE as usize;
         let mut vec = Vec::with_capacity(new_len);
         vec.extend_from_slice(value);
-        vec.resize(new_len, 0);
-        PaddedDataImpl(vec)
+        PaddedDataImpl(vec.into_boxed_slice())
     }
 }
 
@@ -114,6 +115,22 @@ impl PaddedData for PaddedDataImpl {
 
     fn as_ptr(&self) -> *const u8 {
         self.0.as_ptr()
+    }
+}
+
+/// SAFETY: We have no pointers to the inner Box<[u8]> and will relinquish the memory in `into_raw`
+/// below.
+unsafe impl Bufferable for PaddedDataImpl {
+    type Free = FreeBoxed<[u8]>;
+
+    fn into_raw(self) -> (*mut u8, usize, Self::Free) {
+        let len = self.0.len();
+        let ptr = Box::into_raw(self.0);
+        // SAFETY: We have exclusive ownership of `self` and have the only pointer to the memory, which
+        // we are now relinquishing.
+        let free = unsafe { FreeBoxed::new(ptr) };
+
+        (ptr.cast(), len, free)
     }
 }
 

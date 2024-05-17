@@ -89,6 +89,17 @@ pub struct FreeBoxed<T: ?Sized>(*mut T);
 
 unsafe impl<T: ?Sized> Send for FreeBoxed<T> {}
 
+impl<T: ?Sized> FreeBoxed<T> {
+    /// Create a new [`FreeBoxed<T>`] from a `*mut T`.
+    ///
+    /// ## Safety
+    ///
+    /// The caller must guarantee it will not use the memory any more.
+    pub unsafe fn new(ptr: *mut T) -> Self {
+        Self(ptr)
+    }
+}
+
 impl<T: ?Sized> Drop for FreeBoxed<T> {
     fn drop(&mut self) {
         let _ = unsafe { Box::from_raw(self.0) };
