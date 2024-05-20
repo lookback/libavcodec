@@ -117,6 +117,16 @@ impl PaddedData for PaddedDataImpl {
     }
 }
 
+/// SAFETY: The vec is owned by PaddedDataImpl, the pointers are valid as long
+/// as we keep the vec alive. The vec will not be resized causing a reallocation.
+unsafe impl Bufferable for PaddedDataImpl {
+    type Free = Vec<u8>;
+
+    fn into_raw(mut self) -> (*mut u8, usize, Self::Free) {
+        (self.0.as_mut_ptr(), self.0.len(), self.0)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Codec {
     /// SAFETY: These values are allocated and initialised at link time and then valid until
