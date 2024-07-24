@@ -37,7 +37,7 @@ pub struct EncoderConfig {
 impl Encoder {
     pub fn new(codec: &Codec, config: &EncoderConfig) -> Result<Self, Error> {
         unsafe {
-            set_log_level(Level::DEBUG);
+            set_log_level(Level::TRACE);
             av_log_set_callback(Some(log_callback));
 
             if codec.kind() != CodecKind::Encoder {
@@ -77,7 +77,22 @@ impl Encoder {
                 (*ctx).flags2 = sys::AV_CODEC_FLAG2_FAST as i32;
             }
 
-            if (*codec).id == sys::AVCodecID::AV_CODEC_ID_H264 {
+            let is_nvidia = (*codec).name == c"h264_nvenc".as_ptr();
+            let is_x264 = (*codec).id == sys::AVCodecID::AV_CODEC_ID_H264;
+            let is_vpx =
+                (*codec).name == c"libvpx".as_ptr() || (*codec).name == c"libvpx-vp9".as_ptr();
+
+            if is_nvidia {
+                const OPTS: &[(&CStr, &CStr)] = &[
+                    (c"preset", c"llhp"),
+                    (c"rc", c"vbr"),
+                    (c"profile", c"baseline"),
+                ];
+                for (k, v) in OPTS {
+                    // This sets options directly on nvidia
+                    sys::av_opt_set((*ctx).priv_data, k.as_ptr(), v.as_ptr(), 0);
+                }
+            } else if is_x264 {
                 // To be WebRTC compatible
                 (*ctx).profile = sys::FF_PROFILE_H264_CONSTRAINED_BASELINE as i32;
 
@@ -90,9 +105,7 @@ impl Encoder {
                     // This sets options directly on libx264
                     sys::av_opt_set((*ctx).priv_data, k.as_ptr(), v.as_ptr(), 0);
                 }
-            }
-
-            if (*codec).name == c"libvpx".as_ptr() || (*codec).name == c"libvpx-vp9".as_ptr() {
+            } else if is_vpx {
                 // This sets options directly on libvpx
                 sys::av_opt_set((*ctx).priv_data, c"lag_in_frames".as_ptr(), &0, 0);
             }
