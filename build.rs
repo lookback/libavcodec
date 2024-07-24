@@ -9,6 +9,7 @@ fn main() {
 
     let headers = [
         "libavcodec/avcodec.h",
+        "libavutil/avutil.h",
         "libavutil/opt.h",
         "libavutil/mem.h",
         "libavutil/imgutils.h",
