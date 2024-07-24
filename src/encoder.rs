@@ -121,6 +121,7 @@ impl Encoder {
     pub fn encode(
         &mut self,
         frame: impl Frame,
+        force_keyframe: bool,
     ) -> Result<impl Iterator<Item = Result<impl Packet<[u8]>, Error>> + '_, Error> {
         let pts = self.pts_counter;
         self.pts_counter += 1;
@@ -140,6 +141,12 @@ impl Encoder {
         let height = frame.height() as i32;
 
         let rotation = frame.rotation();
+        let pic_type = if force_keyframe {
+            sys::AVPictureType::AV_PICTURE_TYPE_I
+        } else {
+            sys::AVPictureType::AV_PICTURE_TYPE_NONE
+        };
+        unsafe { (*fr).pict_type = pic_type };
 
         let buf = Buffer::new(frame.into_bufferable());
         let mut buffers = [ptr::null_mut(); MAX_PLANES];
