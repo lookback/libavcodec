@@ -47,6 +47,10 @@ impl Decoder {
 
         let codec = codec.ptr;
         let ctx: *mut sys::AVCodecContext = unsafe { sys::avcodec_alloc_context3(codec) };
+        unsafe {
+            (*ctx).thread_count = 0;
+            (*ctx).thread_type = sys::FF_THREAD_FRAME as i32;
+        }
         if ctx.is_null() {
             return Err(Error::CreateContextFailed);
         }
