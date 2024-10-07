@@ -102,7 +102,13 @@ impl Decoder {
         let buf = unsafe {
             sys::av_buffer_create(
                 data_ptr.cast_mut(),
-                len as i32,
+                // NB: The type expected here differs based on the underlying version of
+                // libavcoded. For newer version it's `usize`, but on older versions it's `i32`.
+                // Since we never want to create buffers of size 2GiB size we unwrap here, panicing
+                // on too larger buffers.
+                // Silence clippy since this conversion is not actually useless
+                #[allow(clippy::useless_conversion)]
+                len.try_into().unwrap(),
                 Some(free_packet_droppable::<<T as Packet<Data>>::Droppable>),
                 opaque.cast(),
                 0,
