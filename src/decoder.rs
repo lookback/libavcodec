@@ -21,8 +21,6 @@ pub struct Decoder {
     pts_map: PtsMap,
 }
 
-unsafe impl Send for Decoder {}
-
 struct PtsMap {
     map: [(i64, usize); 16],
     cur: usize,

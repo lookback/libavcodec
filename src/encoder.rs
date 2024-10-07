@@ -19,9 +19,6 @@ pub struct Encoder {
     pts_counter: i64,
 }
 
-unsafe impl Send for Encoder {}
-unsafe impl Sync for Encoder {}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncoderConfig {
     pub bitrate: u32,
