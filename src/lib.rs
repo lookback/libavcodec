@@ -33,6 +33,15 @@ pub trait Frame {
     fn rotation(&self) -> usize;
 
     fn into_droppable(self) -> Self::Droppable;
+
+    // Shortcut when using libavcodec decoder -> libavcodec encoder
+    #[doc(hidden)]
+    fn as_avcodec_buf_ref(&self) -> Option<[*mut sys::AVBufferRef; MAX_PLANES]>
+    where
+        Self: Sized,
+    {
+        None
+    }
 }
 
 pub trait Packet<Data>
@@ -46,6 +55,15 @@ where
     fn keyframe(&self) -> bool;
 
     fn into_droppable(self) -> Self::Droppable;
+
+    // Shortcut when using libavcodec encoder -> libavcodec decoder
+    #[doc(hidden)]
+    fn as_avcodec_buf_ref(&self) -> Option<*mut sys::AVBufferRef>
+    where
+        Self: Sized,
+    {
+        None
+    }
 }
 
 #[allow(clippy::len_without_is_empty)]

@@ -95,24 +95,28 @@ impl Decoder {
         let len = data.len();
         let data_ptr = data.as_ptr();
 
-        let droppable = packet.into_droppable();
-        let boxed = Box::new(droppable);
-        let opaque = Box::into_raw(boxed);
+        let buf = if let Some(buf) = packet.as_avcodec_buf_ref() {
+            buf
+        } else {
+            let droppable = packet.into_droppable();
+            let boxed = Box::new(droppable);
+            let opaque = Box::into_raw(boxed);
 
-        let buf = unsafe {
-            sys::av_buffer_create(
-                data_ptr.cast_mut(),
-                // NB: The type expected here differs based on the underlying version of
-                // libavcoded. For newer version it's `usize`, but on older versions it's `i32`.
-                // Since we never want to create buffers of size 2GiB size we unwrap here, panicing
-                // on too larger buffers.
-                // Silence clippy since this conversion is not actually useless
-                #[allow(clippy::useless_conversion)]
-                len.try_into().unwrap(),
-                Some(free_packet_droppable::<<T as Packet<Data>>::Droppable>),
-                opaque.cast(),
-                0,
-            )
+            unsafe {
+                sys::av_buffer_create(
+                    data_ptr.cast_mut(),
+                    // NB: The type expected here differs based on the underlying version of
+                    // libavcoded. For newer version it's `usize`, but on older versions it's `i32`.
+                    // Since we never want to create buffers of size 2GiB size we unwrap here, panicing
+                    // on too larger buffers.
+                    // Silence clippy since this conversion is not actually useless
+                    #[allow(clippy::useless_conversion)]
+                    len.try_into().unwrap(),
+                    Some(free_packet_droppable::<<T as Packet<Data>>::Droppable>),
+                    opaque.cast(),
+                    0,
+                )
+            }
         };
 
         unsafe {
@@ -284,6 +288,15 @@ impl Frame for DecodedFrame {
 
     fn into_droppable(self) -> Self::Droppable {
         self
+    }
+
+    fn as_avcodec_buf_ref(&self) -> Option<[*mut sys::AVBufferRef; MAX_PLANES]>
+    where
+        Self: Sized,
+    {
+        // SAFETY: The pointer is valid until we run the Drop trait.
+        let buffers = unsafe { (*self.0).buf };
+        Some(buffers)
     }
 }
 

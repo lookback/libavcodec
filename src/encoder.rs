@@ -160,21 +160,26 @@ impl Encoder {
         };
         unsafe { (*fr).pict_type = pic_type };
 
-        let droppable = frame.into_droppable();
-        let boxed = Box::new(droppable);
-        let opaque = Box::into_raw(boxed);
+        let buffers = if let Some(buffers) = frame.as_avcodec_buf_ref() {
+            buffers
+        } else {
+            let droppable = frame.into_droppable();
+            let boxed = Box::new(droppable);
+            let opaque = Box::into_raw(boxed);
 
-        let buf = unsafe {
-            sys::av_buffer_create(
-                ptr::null_mut(),
-                0,
-                Some(free_frame_droppable::<<T as Frame>::Droppable>),
-                opaque.cast(),
-                0,
-            )
+            let buf = unsafe {
+                sys::av_buffer_create(
+                    ptr::null_mut(),
+                    0,
+                    Some(free_frame_droppable::<<T as Frame>::Droppable>),
+                    opaque.cast(),
+                    0,
+                )
+            };
+            let mut buffers = [ptr::null_mut(); MAX_PLANES];
+            buffers[0] = buf;
+            buffers
         };
-        let mut buffers = [ptr::null_mut(); MAX_PLANES];
-        buffers[0] = buf;
 
         unsafe {
             (*fr).format = PixelFormat::AV_PIX_FMT_YUV420P as i32;
@@ -274,6 +279,15 @@ impl Packet<[u8]> for EncodedPacket {
 
     fn into_droppable(self) -> Self::Droppable {
         self
+    }
+
+    fn as_avcodec_buf_ref(&self) -> Option<*mut sys::AVBufferRef>
+    where
+        Self: Sized,
+    {
+        // SAFETY: The pointer is valid until we run the Drop trait.
+        let buf = unsafe { (*self.pkt).buf };
+        Some(buf)
     }
 }
 
