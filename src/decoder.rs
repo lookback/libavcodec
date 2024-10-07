@@ -102,7 +102,7 @@ impl Decoder {
         let buf = unsafe {
             sys::av_buffer_create(
                 data_ptr.cast_mut(),
-                len,
+                len as i32,
                 Some(free_packet_droppable::<<T as Packet<Data>>::Droppable>),
                 opaque.cast(),
                 0,
