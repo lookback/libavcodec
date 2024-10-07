@@ -16,16 +16,13 @@ pub use decoder::Decoder;
 mod error;
 pub use error::Error;
 
-mod buffer;
-pub use buffer::Bufferable;
-
 use tracing::Level;
 use tracing::{debug, error, info, trace, warn};
 
 const MAX_PLANES: usize = sys::AV_NUM_DATA_POINTERS as usize;
 
 pub trait Frame {
-    type AsBufferable: Bufferable + Send + 'static;
+    type Droppable: Drop;
 
     fn width(&self) -> usize;
     fn height(&self) -> usize;
@@ -35,50 +32,20 @@ pub trait Frame {
 
     fn rotation(&self) -> usize;
 
-    fn into_bufferable(self) -> Self::AsBufferable;
-
-    /// Consume self and turn into a pointer/length + the mechanism for freeing.
-    fn into_raw(
-        self,
-    ) -> (
-        *mut u8,
-        usize,
-        <<Self as Frame>::AsBufferable as Bufferable>::Free,
-    )
-    where
-        Self: Sized,
-    {
-        let bufferable = self.into_bufferable();
-        bufferable.into_raw()
-    }
+    fn into_droppable(self) -> Self::Droppable;
 }
 
 pub trait Packet<Data>
 where
     Data: ?Sized,
 {
-    type AsBufferable: Bufferable + Send + 'static;
+    type Droppable;
 
     fn data(&self) -> &Data;
     fn rotation(&self) -> usize;
     fn keyframe(&self) -> bool;
 
-    fn into_bufferable(self) -> Self::AsBufferable;
-
-    /// Consume self and turn into a pointer/length + the mechanism for freeing.
-    fn into_raw(
-        self,
-    ) -> (
-        *mut u8,
-        usize,
-        <<Self as Packet<Data>>::AsBufferable as Bufferable>::Free,
-    )
-    where
-        Self: Sized,
-    {
-        let bufferable = self.into_bufferable();
-        bufferable.into_raw()
-    }
+    fn into_droppable(self) -> Self::Droppable;
 }
 
 #[allow(clippy::len_without_is_empty)]
@@ -114,16 +81,6 @@ impl PaddedData for PaddedDataImpl {
 
     fn as_ptr(&self) -> *const u8 {
         self.0.as_ptr()
-    }
-}
-
-/// SAFETY: The vec is owned by PaddedDataImpl, the pointers are valid as long
-/// as we keep the vec alive. The vec will not be resized causing a reallocation.
-unsafe impl Bufferable for PaddedDataImpl {
-    type Free = Vec<u8>;
-
-    fn into_raw(mut self) -> (*mut u8, usize, Self::Free) {
-        (self.0.as_mut_ptr(), self.0.len(), self.0)
     }
 }
 

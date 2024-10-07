@@ -1,10 +1,9 @@
+use std::ffi::c_void;
 use std::ffi::CStr;
 use std::ptr;
 
 use tracing::Level;
 
-use crate::buffer::Buffer;
-use crate::buffer::BufferableAvBuffer;
 use crate::Packet;
 use crate::MAX_PLANES;
 
@@ -131,9 +130,9 @@ impl Encoder {
         unsafe { Codec::from_ptr(self.codec) }
     }
 
-    pub fn encode(
+    pub fn encode<T: Frame>(
         &mut self,
-        frame: impl Frame,
+        frame: T,
         force_keyframe: bool,
     ) -> Result<impl Iterator<Item = Result<impl Packet<[u8]>, Error>> + '_, Error> {
         let pts = self.pts_counter;
@@ -161,9 +160,21 @@ impl Encoder {
         };
         unsafe { (*fr).pict_type = pic_type };
 
-        let buf = Buffer::new(frame.into_bufferable());
+        let droppable = frame.into_droppable();
+        let boxed = Box::new(droppable);
+        let opaque = Box::into_raw(boxed);
+
+        let buf = unsafe {
+            sys::av_buffer_create(
+                ptr::null_mut(),
+                0,
+                Some(free_frame_droppable::<<T as Frame>::Droppable>),
+                opaque.cast(),
+                0,
+            )
+        };
         let mut buffers = [ptr::null_mut(); MAX_PLANES];
-        buffers[0] = buf.into();
+        buffers[0] = buf;
 
         unsafe {
             (*fr).format = PixelFormat::AV_PIX_FMT_YUV420P as i32;
@@ -190,6 +201,12 @@ impl Encoder {
             rotation,
         })
     }
+}
+
+extern "C" fn free_frame_droppable<T>(opaque: *mut c_void, _data: *mut u8) {
+    unsafe {
+        let _ = Box::<T>::from_raw(opaque.cast());
+    };
 }
 
 impl Drop for Encoder {
@@ -241,7 +258,7 @@ struct EncodedPacket {
 }
 
 impl Packet<[u8]> for EncodedPacket {
-    type AsBufferable = BufferableAvBuffer;
+    type Droppable = Self;
 
     fn data(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts((*self.pkt).data, (*self.pkt).size as usize) }
@@ -255,8 +272,8 @@ impl Packet<[u8]> for EncodedPacket {
         unsafe { (*self.pkt).flags & sys::AV_PKT_FLAG_KEY as i32 > 0 }
     }
 
-    fn into_bufferable(self) -> Self::AsBufferable {
-        self.pkt.into()
+    fn into_droppable(self) -> Self::Droppable {
+        self
     }
 }
 

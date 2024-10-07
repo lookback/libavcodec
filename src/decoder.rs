@@ -1,8 +1,6 @@
 use std::ffi::c_void;
 use std::ptr;
 
-use crate::buffer::Buffer;
-use crate::buffer::BufferableAvBuffer;
 use crate::Packet;
 use crate::PaddedData;
 use crate::MAX_PLANES;
@@ -74,9 +72,9 @@ impl Decoder {
     /// Decode some compressed data.
     ///
     /// Returns an iterator over the resulting frames.
-    pub fn decode<Data: PaddedData>(
+    pub fn decode<T: Packet<Data>, Data: PaddedData>(
         &mut self,
-        packet: impl Packet<Data>,
+        packet: T,
     ) -> Result<impl Iterator<Item = Result<impl Frame, Error>> + '_, Error> {
         let mut pkt = unsafe { sys::av_packet_alloc() };
 
@@ -97,10 +95,22 @@ impl Decoder {
         let len = data.len();
         let data_ptr = data.as_ptr();
 
-        let buf = Buffer::new(packet.into_bufferable());
+        let droppable = packet.into_droppable();
+        let boxed = Box::new(droppable);
+        let opaque = Box::into_raw(boxed);
+
+        let buf = unsafe {
+            sys::av_buffer_create(
+                data_ptr.cast_mut(),
+                len,
+                Some(free_packet_droppable::<<T as Packet<Data>>::Droppable>),
+                opaque.cast(),
+                0,
+            )
+        };
 
         unsafe {
-            (*pkt).buf = buf.into();
+            (*pkt).buf = buf;
             (*pkt).data = data_ptr.cast_mut();
             (*pkt).pts = pts;
             // This should be the size of the data without the padding
@@ -132,6 +142,12 @@ impl Decoder {
             ended: false,
         })
     }
+}
+
+extern "C" fn free_packet_droppable<T>(opaque: *mut c_void, _data: *mut u8) {
+    unsafe {
+        let _ = Box::<T>::from_raw(opaque.cast());
+    };
 }
 
 struct DecoderIterator<'a> {
@@ -185,7 +201,7 @@ impl DecodedFrame {
 }
 
 impl Frame for DecodedFrame {
-    type AsBufferable = BufferableAvBuffer;
+    type Droppable = Self;
 
     fn width(&self) -> usize {
         // SAFETY: The pointer is valid while self is alive.
@@ -260,8 +276,16 @@ impl Frame for DecodedFrame {
         unsafe { (*self.0).opaque as usize }
     }
 
-    fn into_bufferable(self) -> Self::AsBufferable {
-        self.0.into()
+    fn into_droppable(self) -> Self::Droppable {
+        self
+    }
+}
+
+impl Drop for DecodedFrame {
+    fn drop(&mut self) {
+        unsafe {
+            sys::av_frame_free(&mut self.0);
+        }
     }
 }
 
@@ -277,18 +301,6 @@ impl PtsMap {
             .find(|(p, _)| *p == pts)
             .copied()
             .map(|(_, v)| v)
-    }
-}
-
-impl Drop for DecodedFrame {
-    fn drop(&mut self) {
-        if self.0.is_null() {
-            return;
-        }
-
-        unsafe {
-            sys::av_frame_free(&mut self.0);
-        }
     }
 }
 
