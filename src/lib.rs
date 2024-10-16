@@ -118,6 +118,12 @@ pub enum CodecKind {
     Decoder,
 }
 
+pub fn libavcodec_license() -> String {
+    let s = unsafe { sys::avcodec_license() };
+    let license = unsafe { CStr::from_ptr(s) };
+    license.to_string_lossy().to_string()
+}
+
 impl Codec {
     pub fn list(kind: CodecKind) -> impl Iterator<Item = Codec> {
         CodecIterator(Some(ptr::null_mut()), kind)
@@ -292,5 +298,10 @@ mod test {
     #[test]
     fn test_err_to_string() {
         println!("{:#?}", err_code_to_string(-22));
+    }
+
+    #[test]
+    fn test_get_license() {
+        println!("{}", libavcodec_license());
     }
 }
