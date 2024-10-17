@@ -21,6 +21,25 @@ pub struct Decoder {
     pts_map: PtsMap,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DecoderConfig {
+    /// Number of decoding threads: 0 for auto (picked by the decoder).
+    pub thread_count: u32,
+    /// Type of threading.
+    pub thread_type: DecodeThreadType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum DecodeThreadType {
+    // Decode more than one frame at once
+    Frame,
+    // Decode more than one part of a single frame at once
+    Slice,
+    // Whatever is the default of the decoder
+    #[default]
+    Default,
+}
+
 struct PtsMap {
     map: [(i64, usize); 16],
     cur: usize,
@@ -31,7 +50,7 @@ struct DecodedFrame(*mut sys::AVFrame);
 
 impl Decoder {
     /// Create a new decoder
-    pub fn new(codec: &Codec) -> Result<Self, Error> {
+    pub fn new(codec: &Codec, config: &DecoderConfig) -> Result<Self, Error> {
         set_log_level(Level::DEBUG);
         unsafe {
             av_log_set_callback(Some(log_callback));
@@ -45,6 +64,19 @@ impl Decoder {
         let ctx: *mut sys::AVCodecContext = unsafe { sys::avcodec_alloc_context3(codec) };
         if ctx.is_null() {
             return Err(Error::CreateContextFailed);
+        }
+
+        unsafe {
+            (*ctx).thread_count = config.thread_count as i32;
+            match config.thread_type {
+                DecodeThreadType::Frame => {
+                    (*ctx).thread_type = sys::FF_THREAD_FRAME as i32;
+                }
+                DecodeThreadType::Slice => {
+                    (*ctx).thread_type = sys::FF_THREAD_SLICE as i32;
+                }
+                DecodeThreadType::Default => {}
+            };
         }
 
         let dec = Decoder {
