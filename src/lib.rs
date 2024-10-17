@@ -29,6 +29,7 @@ pub trait Frame {
     fn plane_count(&self) -> usize;
     fn get_plane(&self, i: usize) -> &[u8];
     fn get_stride(&self, i: usize) -> usize;
+    fn pts(&self) -> i64;
 
     fn rotation(&self) -> usize;
 
@@ -53,6 +54,7 @@ where
     fn data(&self) -> &Data;
     fn rotation(&self) -> usize;
     fn keyframe(&self) -> bool;
+    fn pts(&self) -> i64;
 
     fn into_droppable(self) -> Self::Droppable;
 
