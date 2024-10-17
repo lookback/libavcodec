@@ -14,9 +14,6 @@ use tracing::Level;
 
 pub struct Decoder {
     ctx: *mut sys::AVCodecContext,
-    /// Counter for each packet to decode. Has no relation to "real" PTS and increases with 1
-    /// for each call to decode()
-    pts_counter: i64,
     /// Maps rotation values to the PTS of the incoming packet.
     pts_map: PtsMap,
 }
@@ -81,7 +78,6 @@ impl Decoder {
 
         let dec = Decoder {
             ctx,
-            pts_counter: 0,
             pts_map: PtsMap::default(),
         };
 
@@ -108,9 +104,7 @@ impl Decoder {
             return Err(Error::AlllocateFailed("av_malloc for Decoder::decode"));
         }
 
-        let pts = self.pts_counter;
-        self.pts_counter += 1;
-
+        let pts = packet.pts();
         self.pts_map.set(pts, packet.rotation());
 
         let data = packet.data();
@@ -312,6 +306,10 @@ impl Frame for DecodedFrame {
         unsafe { (*self.0).opaque as usize }
     }
 
+    fn pts(&self) -> i64 {
+        self.pts()
+    }
+
     fn into_droppable(self) -> Self::Droppable {
         self
     }
@@ -324,6 +322,7 @@ impl Frame for DecodedFrame {
         let buffers = unsafe { (*self.0).buf };
         Some(buffers)
     }
+
 }
 
 impl Drop for DecodedFrame {

@@ -274,6 +274,10 @@ impl Packet<[u8]> for EncodedPacket {
         unsafe { (*self.pkt).flags & sys::AV_PKT_FLAG_KEY as i32 > 0 }
     }
 
+    fn pts(&self) -> i64 {
+        unsafe { (*self.pkt).pts }
+    }
+
     fn into_droppable(self) -> Self::Droppable {
         self
     }
