@@ -11,7 +11,7 @@ mod encoder;
 pub use encoder::{Encoder, EncoderConfig};
 
 mod decoder;
-pub use decoder::Decoder;
+pub use decoder::{Decoder, DecoderConfig, DecodeThreadType};
 
 mod error;
 pub use error::Error;
