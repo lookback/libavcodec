@@ -11,7 +11,7 @@ mod encoder;
 pub use encoder::{Encoder, EncoderConfig};
 
 mod decoder;
-pub use decoder::{Decoder, DecoderConfig, DecodeThreadType};
+pub use decoder::{DecodeThreadType, Decoder, DecoderConfig};
 
 mod error;
 pub use error::Error;
@@ -22,7 +22,7 @@ use tracing::{debug, error, info, trace, warn};
 const MAX_PLANES: usize = sys::AV_NUM_DATA_POINTERS as usize;
 
 pub trait Frame {
-    type Droppable: Drop;
+    type Droppable: Send + Sync;
 
     fn width(&self) -> usize;
     fn height(&self) -> usize;
@@ -49,7 +49,7 @@ pub trait Packet<Data>
 where
     Data: ?Sized,
 {
-    type Droppable;
+    type Droppable: Send + Sync;
 
     fn data(&self) -> &Data;
     fn rotation(&self) -> usize;

@@ -44,10 +44,7 @@ impl Encoder {
                 return Err(Error::CreateContextFailed);
             }
 
-            let enc = Encoder {
-                codec,
-                ctx,
-            };
+            let enc = Encoder { codec, ctx };
 
             {
                 (*ctx).bit_rate = config.bitrate as i64;
@@ -253,6 +250,10 @@ struct EncodedPacket {
     pkt: *mut sys::AVPacket,
     rotation: usize,
 }
+
+// SAFETY: AVPacket is fine to send between threads.
+unsafe impl Send for EncodedPacket {}
+unsafe impl Sync for EncodedPacket {}
 
 impl Packet<[u8]> for EncodedPacket {
     type Droppable = Self;
