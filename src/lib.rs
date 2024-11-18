@@ -104,6 +104,12 @@ impl PaddedData for PaddedDataImpl {
     }
 }
 
+impl Drop for PaddedDataImpl {
+    fn drop(&mut self) {
+        // We want this due to type Droppable: Drop above
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Codec {
     /// SAFETY: These values are allocated and initialised at link time and then valid until
