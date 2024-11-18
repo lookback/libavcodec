@@ -45,6 +45,10 @@ struct PtsMap {
 /// A single frame of video or audio.
 struct DecodedFrame(*mut sys::AVFrame);
 
+// SAFETY: AVFrame is fine to send between threads.
+unsafe impl Send for DecodedFrame {}
+unsafe impl Sync for DecodedFrame {}
+
 impl Decoder {
     /// Create a new decoder
     pub fn new(codec: &Codec, config: &DecoderConfig) -> Result<Self, Error> {
@@ -322,7 +326,6 @@ impl Frame for DecodedFrame {
         let buffers = unsafe { (*self.0).buf };
         Some(buffers)
     }
-
 }
 
 impl Drop for DecodedFrame {
