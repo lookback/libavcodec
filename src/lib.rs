@@ -22,7 +22,7 @@ use tracing::{debug, error, info, trace, warn};
 const MAX_PLANES: usize = sys::AV_NUM_DATA_POINTERS as usize;
 
 pub trait Frame {
-    type Droppable: Send + Sync;
+    type Droppable: Drop + Send + Sync;
 
     fn width(&self) -> usize;
     fn height(&self) -> usize;
@@ -49,7 +49,7 @@ pub trait Packet<Data>
 where
     Data: ?Sized,
 {
-    type Droppable: Send + Sync;
+    type Droppable: Drop + Send + Sync;
 
     fn data(&self) -> &Data;
     fn rotation(&self) -> usize;
