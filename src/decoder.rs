@@ -115,7 +115,7 @@ impl Decoder {
 
         // The buffer used for the packet is required to have
         // `sys::AV_INPUT_BUFFER_PADDING_SIZE` padding bytes, this is guaranteed for us by
-        // packet being of type `PaddedPacket`.
+        // packet being of type `PaddedData`.
         let len = data.len();
         let data_ptr = data.as_ptr();
 
